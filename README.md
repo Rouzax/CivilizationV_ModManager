@@ -1,61 +1,107 @@
 # Civilization V Mod Manager
 
-## Overview
-This script automates the management of Sid Meier's Civilization V game configurations, save backups, and mod updates. It is particularly useful for updating DLC and MyDocuments files, clearing caches, and ensuring the game is in the correct state for a selected game mode.
-
-## Requirements
-- Windows PowerShell (Version 5.1 or later)
-- Internet access for downloading online resources and game files
-
-## Parameters
-The script requires three mandatory parameters:
-
-- `-gameRootPath`: Specifies the root path where Civilization V is installed.
-- `-steamINI`: Specifies the path to the Steam configuration INI file.
-- `-onlineJsonUrl`: Specifies the URL for the online JSON resource containing game mode information.
+This script, `CivilizationV_ModManager.ps1`, is designed to help manage and streamline mod configurations for Sid Meier's Civilization V. It handles tasks like backing up save files, cleaning up outdated files, downloading necessary resources, and ensuring compatibility for selected game modes.
 
 ## Features
-1. **Dynamic Mode Selection:**
-   - Allows users to choose from a list of available game modes.
-   - Automatically updates DLC and MyDocuments files based on the selected mode.
+- **Mode Selection**: Choose from various predefined game modes with detailed descriptions.
+- **Backup Save Files**: Automatically backs up save files before making changes.
+- **File and Folder Cleanup**: Cleans up outdated files and folders based on selected modes.
+- **Version Management**: Ensures the local files match the online version for the selected mode.
+- **Cache Management**: Clears cache directories when necessary.
+- **Download and Extract Updates**: Downloads and extracts necessary files for the selected game mode.
+- **Automatic INI Updates**: Updates your `steam.ini` file with the current username.
 
-2. **Save Game Backup:**
-   - Backs up existing save files before updating game files.
-
-3. **Online Resource Integration:**
-   - Retrieves game mode information and version updates from an online JSON file.
-
-4. **Cache Management:**
-   - Clears cache directories if required, ensuring a clean game state.
-
-5. **File Management:**
-   - Cleans up old files during mode switches.
-   - Downloads and extracts new DLC or MyDocuments files as needed.
-
-6. **Error Handling:**
-   - Provides detailed error messages for any issues encountered during execution.
+## Installation
+1. Download the script: `CivilizationV_ModManager.ps1`.
+2. Place the script in a directory of your choice.
+3. Ensure you have PowerShell 5.0 or newer installed.
 
 ## Usage
-Run the script with the following syntax:
-
+Run the script with the following parameters:
 ```powershell
-./CivilizationV_ModManager.ps1 -gameRootPath "C:\Path\To\Game" -steamINI "steam_appid.ini" -onlineJsonUrl "https://example.com/game_modes.json"
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$gameRootPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$steamINI ,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$onlineJsonUrl
+)
+```
+### Example
+```powershell
+powershell -ExecutionPolicy Bypass -File CivilizationV_ModManager.ps1 -gameRootPath "C:\Games\Civ5" -steamINI "steam.ini" -onlineJsonUrl "https://example.com/civ5/modes.json"
 ```
 
-### Example Workflow
-1. The script checks the provided paths and verifies their existence.
-2. Updates the Steam INI file with the current Windows username.
-3. Retrieves online game mode data from the provided JSON URL.
-4. Displays a menu of available game modes for the user to select.
-5. Cleans up old files and downloads new DLC or MyDocuments files if needed.
-6. Backs up save games before any updates.
-7. Clears cache directories if required.
-8. Starts the game in the selected mode.
+## JSON Structure
+The script relies on a JSON file to define the available game modes, their descriptions, and related configurations. Here’s an explanation of its structure:
+
+### Example JSON
+```json
+{
+    "schemaVersion": "1.0",
+    "lastUpdated": "2024-12-20",
+    "PlayModes": [
+        {
+            "Name": "Standard",
+            "Description": "Classic Civilization V with all official expansions. Features vanilla gameplay and standard AI. Fully compatible with multiplayer and achievements. Perfect for new players.",
+            "MultiplayerCompatible": true,
+            "OnlineVersion": {
+                "DLC": "1.0.0",
+                "MyDocuments": "1.0.0"
+            },
+            "Files": [],
+            "Folders": [],
+            "DLCDownload": null,
+            "DocsDownload": null
+        },
+        {
+            "Name": "Standard with EUI",
+            "Description": "Enhanced User Interface (EUI) adds quality-of-life improvements for gameplay. Compatible with multiplayer but may disable achievements.",
+            "MultiplayerCompatible": true,
+            "OnlineVersion": {
+                "DLC": "2.0.0",
+                "MyDocuments": "2.0.0"
+            },
+            "Files": [],
+            "Folders": [],
+            "DLCDownload": "https://example.com/civ5/eui_dlc.zip",
+            "DocsDownload": "https://example.com/civ5/eui_docs.zip"
+        }
+    ],
+    "Settings": {
+        "BackupSaves": true,
+        "CleanupOnModeSwitch": true
+    }
+}
+```
+
+### Fields
+- **schemaVersion**: Indicates the version of the JSON schema.
+- **lastUpdated**: The last update date for this JSON file.
+- **PlayModes**: An array of objects defining available game modes.
+  - **Name**: The name of the game mode.
+  - **Description**: A detailed description of the mode.
+  - **MultiplayerCompatible**: Indicates if the mode supports multiplayer.
+  - **OnlineVersion**: An object containing version information for:
+    - **DLC**: The version of DLC files.
+    - **MyDocuments**: The version of files in the MyDocuments folder.
+  - **Files**: A list of specific files associated with this mode.
+  - **Folders**: A list of specific folders associated with this mode.
+  - **DLCDownload**: (Optional) The URL to download DLC files.
+  - **DocsDownload**: (Optional) The URL to download files for the MyDocuments folder.
+- **Settings**: Global settings for the script.
+  - **BackupSaves**: If true, save files will be backed up.
+  - **CleanupOnModeSwitch**: If true, old files and folders will be cleaned up when switching modes.
 
 ## Notes
-- Ensure that the game root path and Steam INI file path are correct.
-- The script will not proceed without internet access if online resources are required.
+1. Replace the example URLs in the `DLCDownload` and `DocsDownload` fields with actual URLs.
+2. Ensure the JSON file is accessible from the `onlineJsonUrl` parameter.
+3. The script automatically detects and adapts to your console width for improved readability.
 
 ## License
-This script is open-source and provided "as is." Use it at your own risk.
+This project is licensed under the MIT License.
 
