@@ -1,94 +1,409 @@
-# Define file paths
-$iniFilePath = "D:\Games\Sid Meier's Civilization V\steam_api.ini"
-$gameExecutablePath = "D:\Games\Sid Meier's Civilization V\CivilizationV_DX11.exe"
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$gameRootPath,
 
-$header = "Civilization V Configuration Updater"
+    [Parameter(Mandatory = $true)]
+    [string]$steamINI ,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$onlineJsonUrl
+)
 
-# Function to display a header
-function Show-Header {
-    param (
-        [string]$Text
+# Function to write colored console messages with section headers
+function Write-ColorMessage {
+    param(
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$IsHeader = $false
     )
-    Write-Host "==========================================" -ForegroundColor Yellow
-    Write-Host $Text -ForegroundColor Yellow
-    Write-Host "==========================================" -ForegroundColor Yellow
-}
-
-# Function to display a separator
-function Show-Seperator {
-    Write-Host "------------------------------------------" -ForegroundColor DarkYellow
-}
-
-# Get the current logged-on username and capitalize the first letter of each word
-$TextInfo = (Get-Culture).TextInfo
-$currentUserName = $TextInfo.ToTitleCase($env:USERNAME)
-
-# Start of the script
-Clear-Host
-Show-Header $header
-
-# Check if the INI file exists
-if (-Not (Test-Path -Path $iniFilePath)) {
-    Write-Host "Error: INI file not found at $iniFilePath" -ForegroundColor Red
-    exit 1
-} else {
-    Write-Host "INI file found at:" -ForegroundColor Green
-    Write-Host "  $iniFilePath" -ForegroundColor White
-}
-
-Show-Seperator
-
-try {
-    # Read the content of the INI file
-    Write-Host "Reading INI file..." -ForegroundColor Cyan
-    $fileContent = Get-Content -Path $iniFilePath -ErrorAction Stop
-
-    # Update the UserName line
-    if ($fileContent -match 'UserName=') {
-        $fileContent = $fileContent -replace '(?m)^UserName=.*$', "UserName=$currentUserName"
-        Write-Host "UserName updated to:" -ForegroundColor Green
-        Write-Host "  $currentUserName" -ForegroundColor White
+    if ($IsHeader) {
+        Write-Host ("=" * 100) -ForegroundColor "Gray"
+        Write-Host $Message -ForegroundColor $Color
+        Write-Host ("=" * 100) -ForegroundColor "Gray"
+        Write-Host " "
     } else {
-        Write-Host "Error: UserName field not found in INI file." -ForegroundColor Red
-        exit 1
+        Write-Host $Message -ForegroundColor $Color
+    }
+}
+
+# Function to check and create directory if it doesn't exist
+function Ensure-Directory {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+        Write-ColorMessage "Created directory: $Path" -Color "Yellow"
+    }
+}
+
+# Function to backup save games
+function Backup-SaveGames {
+    $savePath = Join-Path $myDocumentsGamePath "Saves"
+    if (Test-Path $savePath) {
+        $backupPath = Join-Path $myDocumentsGamePath "Saves_Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        Write-ColorMessage "Backing up save games to: $backupPath" -Color "Cyan"
+        try {
+            Copy-Item -Path $savePath -Destination $backupPath -Recurse -Force
+            Write-ColorMessage "Save games backed up successfully" -Color "Green"
+        } catch {
+            Write-ColorMessage "Failed to backup save games: $_" -Color "Red"
+        }
+    }
+}
+
+# Function to download and extract ZIP files
+function Download-AndExtract {
+    param(
+        [string]$Url,
+        [string]$TargetPath
+    )
+    try {
+        
+        $tempFile = Join-Path $env:TEMP ([System.IO.Path]::GetFileName($Url))
+        Write-ColorMessage "`nDownloading: $Url" -Color "Blue"
+        Invoke-WebRequest -Uri $Url -OutFile $tempFile
+        Write-ColorMessage "Extracting to: $TargetPath" -Color "Cyan"
+        Expand-Archive -Path $tempFile -DestinationPath $TargetPath -Force
+        Remove-Item $tempFile -Force
+        return $true
+    } catch {
+        Write-ColorMessage "Error during download/extract: $_" -Color "Red"
+        return $false
+    }
+}
+
+# Function to clean up files and folders
+function Clean-GameFiles {
+    param(
+        [array]$FilesToClean,
+        [bool]$cleanupEnabled,
+        [string]$location  # Add location parameter to specify DLC or MyDocuments
+    )
+    if (-not $cleanupEnabled) {
+        Write-ColorMessage "Cleanup disabled in settings, skipping..." -Color "Yellow"
+        return
     }
 
-    # Save the updated content back to the file without BOM
-    Write-Host "Saving updates to INI file..." -ForegroundColor Cyan
-	Set-Content -Path $iniFilePath -Value $fileContent -ErrorAction Stop
-    Write-Host "INI file updated successfully." -ForegroundColor Green
+    Write-ColorMessage "`nCleaning up $location files..." -Color "Blue"
 
-} catch {
-    Write-Host "Error: Failed to update INI file." -ForegroundColor Red
-    Write-Host "Details: $_" -ForegroundColor White
-    exit 1
+    foreach ($file in $FilesToClean) {
+        # Only process files/folders for the specified location
+        $isCorrectLocation = ($location -eq "DLC" -and $file.StartsWith("DLC/")) -or 
+        ($location -eq "MyDocuments" -and $file.StartsWith("MyDocuments/")) 
+        
+        if ($isCorrectLocation) {
+            $fullPath = $file -replace "^MyDocuments/", "$myDocumentsGamePath\" -replace "^DLC/", "$dlcFolderPath\"
+            if (Test-Path $fullPath) {
+                try {
+                    Remove-Item -Path $fullPath -Recurse -Force
+                    Write-ColorMessage "Cleaned up: $fullPath" -Color "Yellow"
+                } catch {
+                    Write-ColorMessage "Error cleaning up $fullPath : $_" -Color "Red"
+                }
+            }
+        }
+    }
+    Write-ColorMessage "Cleaning up $location files successful" -Color "Green"
 }
 
-Show-Seperator
-
-# Check if the game executable exists
-if (-Not (Test-Path -Path $gameExecutablePath)) {
-    Write-Host "Error: Game executable not found at $gameExecutablePath" -ForegroundColor Red
-    exit 1
-} else {
-    Write-Host "Game executable found at:" -ForegroundColor Green
-    Write-Host "  $gameExecutablePath" -ForegroundColor White
+# Function to update local version file
+function Update-LocalVersion {
+    param(
+        [string]$Mode,
+        [PSObject]$Version,
+        [string]$Location,
+        [string]$BasePath
+    )
+    $versionFile = Join-Path $BasePath "version_$($Location.ToLower()).json"
+    $versionInfo = @{
+        Mode     = $Mode
+        Version  = $Version
+        LastRun  = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        Location = $Location
+    }
+    $versionInfo | ConvertTo-Json | Set-Content -Path $versionFile
 }
 
-Show-Seperator
+# Function to clear cache directories
+function Clear-CacheDirectories {
+    param(
+        [string]$myDocumentsPath
+    )
+    $cacheDirs = @(
+        (Join-Path $myDocumentsPath "cache"),
+        (Join-Path $myDocumentsPath "ModUserData")
+    )
 
+    foreach ($dir in $cacheDirs) {
+        if (Test-Path $dir) {
+            try {
+                Remove-Item -Path $dir\* -Recurse -Force
+                Write-ColorMessage "Cleared cache directory: $dir" -Color "Yellow"
+            } catch {
+                Write-ColorMessage "Error clearing cache directory $dir : $_" -Color "Red"
+            }
+        }
+    }
+    Write-ColorMessage "Cleared cache directory" -Color "Green"
+}
+
+# Function to check if cache clearing is needed
+function Test-NeedsCacheClearing {
+    param(
+        [PSObject]$dlcVersion,
+        [PSObject]$myDocsVersion,
+        [PSObject]$selectedMode
+    )
+    
+    # If either version file is missing, we need to clear cache
+    if ($null -eq $dlcVersion -or $null -eq $myDocsVersion) {
+        Write-ColorMessage "`nCache clearing needed: Missing version information" -Color "Blue"
+        return $true
+    }
+
+    # Check if either DLC or MyDocuments has a different mode
+    if ($dlcVersion.Mode -ne $selectedMode.Name -or $myDocsVersion.Mode -ne $selectedMode.Name) {
+        Write-ColorMessage "`nCache clearing needed: Mode change detected" -Color "Blue"
+        return $true
+    }
+
+    # Check if either location has a newer version available
+    if ($dlcVersion.Version -ne $selectedMode.OnlineVersion.DLC -or 
+        $myDocsVersion.Version -ne $selectedMode.OnlineVersion.MyDocuments) {
+        Write-ColorMessage "`nCache clearing needed: New version available" -Color "Blue"
+        return $true
+    }
+
+    Write-ColorMessage "`nNo cache clearing needed" -Color "Green"
+    return $false
+}
+
+# Function to wrap text with proper indentation using console width
+function Format-Description {
+    param (
+        [string]$text,
+        [int]$indent = 4,
+        # Default to console width, fallback to 100 if console width can't be determined
+        [int]$maxWidth = $(try { 
+                $host.UI.RawUI.WindowSize.Width 
+            } catch { 
+                try { 
+                    $host.UI.RawUI.BufferSize.Width 
+                } catch { 
+                    100  # Fallback width
+                }
+            })
+    )
+    
+    # Ensure we have some reasonable minimum width
+    $maxWidth = [Math]::Max(40, $maxWidth)
+    
+    # Account for indent in available width
+    $availableWidth = $maxWidth - $indent
+    
+    $indentStr = " " * $indent
+    $words = $text -split '\s+'
+    $lines = @()
+    $currentLine = $indentStr
+    
+    foreach ($word in $words) {
+        # Check if this word alone is longer than available width
+        if ($word.Length -gt $availableWidth) {
+            # If current line has content, add it to lines
+            if ($currentLine -ne $indentStr) {
+                $lines += $currentLine.TrimEnd()
+                $currentLine = $indentStr
+            }
+            # Split long word across lines
+            $remainingWord = $word
+            while ($remainingWord.Length -gt $availableWidth) {
+                $lines += $indentStr + $remainingWord.Substring(0, $availableWidth)
+                $remainingWord = $remainingWord.Substring($availableWidth)
+            }
+            $currentLine = $indentStr + $remainingWord
+        }
+        # Normal word wrapping
+        elseif (($currentLine.Length + $word.Length + 1) -gt $maxWidth) {
+            $lines += $currentLine.TrimEnd()
+            $currentLine = $indentStr + $word
+        } else {
+            if ($currentLine -eq $indentStr) {
+                $currentLine += $word
+            } else {
+                $currentLine += " $word"
+            }
+        }
+    }
+    
+    if ($currentLine -ne $indentStr) {
+        $lines += $currentLine.TrimEnd()
+    }
+    
+    return $lines -join "`n"
+}
+
+# Main script
 try {
+    $gameExecutablePath = Join-Path $gameRootPath "CivilizationV_DX11.exe"
+    $iniFilePath = Join-Path $gameRootPath "$steamINI"
+    $dlcFolderPath = Join-Path $gameRootPath "Assets\DLC"
+    $myDocumentsGamePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "My Games\Sid Meier's Civilization 5"
+
+    write-ColorMessage -Message "Civilization V Mod Manager Script" -Color "Blue" -IsHeader
+
+    # Verify paths exist
+    if (-not (Test-Path $gameRootPath)) {
+        throw "Game root path does not exist: $gameRootPath"
+    }
+
+    # Update $steamINI with username
+    if (Test-Path $iniFilePath) {
+        write-ColorMessage -Message "Updating Multiplayer user name" -Color "Blue"
+        $currentUserName = (Get-Culture).TextInfo.ToTitleCase($env:USERNAME)
+        $iniContent = Get-Content $iniFilePath
+        $iniContent = $iniContent -replace "UserName=.*", "UserName=$currentUserName"
+        $iniContent | Set-Content $iniFilePath
+        Write-ColorMessage "Updated username to: $currentUserName in $steamINI" -Color "Green"
+    } else {
+        Write-ColorMessage "Warning: $steamINI not found" -Color "Yellow"
+    }
+
+    # Check online connectivity
+    try {
+        write-ColorMessage -Message "`nGetting online resources" -Color "Blue"
+        $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
+        Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
+    } catch {
+        Write-ColorMessage "Cannot access online data, starting game in default mode" -Color "Yellow"
+        Start-Process $gameExecutablePath
+        Start-Sleep -Seconds 5
+        exit
+    }
+
+    # Display mode selection menu
+    Write-ColorMessage "`nAvailable Game Modes:" -Color "DarkCyan"
+    $modes = $onlineData.PlayModes
+    for ($i = 0; $i -lt $modes.Count; $i++) {
+        # Create multiplayer status string with appropriate symbol
+        $mpStatus = if ($modes[$i].MultiplayerCompatible) {
+            "Multiplayer Compatible ✓"
+        } else {
+            "Single Player Only ⚠"
+        }
+    
+        # Write the mode number, name, and multiplayer status on the same line with different colors
+        Write-Host "[$($i + 1)] " -NoNewline -ForegroundColor White
+        Write-Host "$($modes[$i].Name)" -NoNewline -ForegroundColor White
+        Write-Host " | " -NoNewline -ForegroundColor Gray
+        Write-Host $mpStatus -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
+                "Green" 
+            } else {
+                "Yellow" 
+            })
+    
+        # Format and display the description with proper wrapping
+        $formattedDesc = Format-Description -text $modes[$i].Description
+        Write-ColorMessage $formattedDesc -Color "Cyan"
+    
+        # Add blank line between modes except after the last one
+        if ($i -lt $modes.Count - 1) {
+            Write-Host ""
+        }
+    }
+
+    # Get user selection (keep the existing code)
+    do {
+        $selection = Read-Host "`nSelect game mode (1-$($modes.Count))"
+    } while ([int]$selection -lt 1 -or [int]$selection -gt $modes.Count)
+    
+    $selectedMode = $modes[$selection - 1]
+    Write-ColorMessage "Selected mode: $($selectedMode.Name)" -Color "Green"
+    
+    # Add multiplayer compatibility warning if needed
+    if (-not $selectedMode.MultiplayerCompatible) {
+        Write-ColorMessage "Note: This mode is designed for single-player only" -Color "Yellow"
+    } elseif ($selectedMode.Name -match "multiplayer|EUI|Vox Populi") {
+        Write-ColorMessage "Note: For multiplayer, all players must use identical mod configuration" -Color "Cyan"
+    }
+
+    # Backup saves if enabled
+    if ($onlineData.Settings.BackupSaves) {
+        Backup-SaveGames
+    }
+
+    # Check versions separately for DLC and MyDocuments
+    $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
+    $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
+
+    $dlcVersion = if (Test-Path $dlcVersionFile) { 
+        Get-Content $dlcVersionFile | ConvertFrom-Json 
+    } else {
+        $null 
+    }
+
+    $myDocsVersion = if (Test-Path $myDocsVersionFile) { 
+        Get-Content $myDocsVersionFile | ConvertFrom-Json 
+    } else {
+        $null 
+    }
+ 
+    $needsDLCUpdate = $dlcVersion -eq $null -or 
+    $dlcVersion.Mode -ne $selectedMode.Name -or 
+    $dlcVersion.Version -ne $selectedMode.OnlineVersion.DLC
+
+    $needsMyDocsUpdate = $myDocsVersion -eq $null -or 
+    $myDocsVersion.Mode -ne $selectedMode.Name -or 
+    $myDocsVersion.Version -ne $selectedMode.OnlineVersion.MyDocuments
+
+    if ($needsDLCUpdate -or $needsMyDocsUpdate) {
+        Write-ColorMessage "`nGame files need updating" -Color "Blue"
+            
+        # Clean up old files if enabled, but only for locations that need updating
+        if ($onlineData.Settings.CleanupOnModeSwitch) {
+            $oldFiles = $modes | Where-Object { $_.Name -ne $selectedMode.Name } |
+                ForEach-Object { $_.Files + $_.Folders }
+            if ($needsDLCUpdate) {
+                Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "DLC"
+            }
+            if ($needsMyDocsUpdate) {
+                Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "MyDocuments"
+            }
+        }
+            
+        # Download and extract required files
+        Ensure-Directory $dlcFolderPath
+        Ensure-Directory $myDocumentsGamePath
+            
+        if ($needsDLCUpdate -and $selectedMode.DLCDownload) {
+            if (Download-AndExtract -Url $selectedMode.DLCDownload -TargetPath $dlcFolderPath) {
+                Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
+                Write-ColorMessage "DLC files updated successfully" -Color "Green"
+            }
+        }
+        
+        if ($needsMyDocsUpdate -and $selectedMode.DocsDownload) {
+            if (Download-AndExtract -Url $selectedMode.DocsDownload -TargetPath $myDocumentsGamePath) {
+                Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
+                Write-ColorMessage "MyDocuments files updated successfully" -Color "Green"
+            }
+        }
+    } else {
+        Write-ColorMessage "Game files are up to date" -Color "Green"
+    }
+
+    # Check if we need to clear cache directories
+    if (Test-NeedsCacheClearing -dlcVersion $dlcVersion -myDocsVersion $myDocsVersion -selectedMode $selectedMode) {
+        Clear-CacheDirectories -myDocumentsPath $myDocumentsGamePath
+    }
+
     # Start the game
-    Write-Host "Launching Civilization V..." -ForegroundColor Cyan
-    Start-Process -FilePath $gameExecutablePath -ErrorAction Stop
-    Write-Host "Civilization V launched successfully." -ForegroundColor Green
+    Write-ColorMessage "`nStarting Civilization V..." -Color "Green"
+    Start-Process $gameExecutablePath
+    # Pause for 5 seconds before ending the script
+    Start-Sleep -Seconds 5
+
 } catch {
-    Write-Host "Error: Failed to launch Civilization V." -ForegroundColor Red
-    Write-Host "Details: $_" -ForegroundColor White
-    exit 1
+    Write-ColorMessage "An error occurred: $_" -Color "Red"
+    Write-ColorMessage "Press any key to exit..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
-
-Show-Seperator
-
-# Pause for 5 seconds before ending the script
-Start-Sleep -Seconds 5

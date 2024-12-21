@@ -1,103 +1,61 @@
-# Civilization V Configuration Updater Script
+# Civilization V Mod Manager
 
-This PowerShell script automates the process of updating the `steam_api.ini` file for *Sid Meier's Civilization V*. It specifically updates the `UserName` field in the configuration file to match the current logged-in Windows user. The script also verifies the existence of both the game executable and the configuration file before attempting to launch the game.
+## Overview
+This script automates the management of Sid Meier's Civilization V game configurations, save backups, and mod updates. It is particularly useful for updating DLC and MyDocuments files, clearing caches, and ensuring the game is in the correct state for a selected game mode.
+
+## Requirements
+- Windows PowerShell (Version 5.1 or later)
+- Internet access for downloading online resources and game files
+
+## Parameters
+The script requires three mandatory parameters:
+
+- `-gameRootPath`: Specifies the root path where Civilization V is installed.
+- `-steamINI`: Specifies the path to the Steam configuration INI file.
+- `-onlineJsonUrl`: Specifies the URL for the online JSON resource containing game mode information.
 
 ## Features
+1. **Dynamic Mode Selection:**
+   - Allows users to choose from a list of available game modes.
+   - Automatically updates DLC and MyDocuments files based on the selected mode.
 
-- Updates the `UserName` field in the `steam_api.ini` file to the current logged-in Windows username.
-- Checks if the `steam_api.ini` file and the Civilization V executable are present at specified locations.
-- Attempts to launch *Sid Meier's Civilization V* if all checks pass.
-- Provides console feedback with color-coded messages indicating success, error, and informational updates.
-- Includes basic error handling for missing files and failures during execution.
-- Pauses for 5 seconds before the script ends to give the user time to review the final output.
+2. **Save Game Backup:**
+   - Backs up existing save files before updating game files.
 
-## Prerequisites
+3. **Online Resource Integration:**
+   - Retrieves game mode information and version updates from an online JSON file.
 
-- PowerShell (the script has been tested with PowerShell 5.1).
-- Sid Meier's Civilization V installed on your system.
+4. **Cache Management:**
+   - Clears cache directories if required, ensuring a clean game state.
+
+5. **File Management:**
+   - Cleans up old files during mode switches.
+   - Downloads and extracts new DLC or MyDocuments files as needed.
+
+6. **Error Handling:**
+   - Provides detailed error messages for any issues encountered during execution.
 
 ## Usage
+Run the script with the following syntax:
 
-### 1. Download or Clone the Repository
-
-To use this script, download or clone this repository to your local machine.
-
-### 2. Modify the Script Paths (if necessary)
-
-Open the script (`Update_CivV_UserName.ps1`) in a text editor and ensure the following paths are correctly set for your system:
-
-- **`steam_api.ini`**: The location of your *Sid Meier's Civilization V* configuration file.
-- **`Civilization V Executable`**: The path to the Civilization V executable (typically `CivilizationV_DX11.exe`).
-
-For example:
 ```powershell
-$iniFilePath = "D:\Games\Sid Meier's Civilization V\steam_api.ini"
-$gameExecutablePath = "D:\Games\Sid Meier's Civilization V\CivilizationV_DX11.exe"
+./CivilizationV_ModManager.ps1 -gameRootPath "C:\Path\To\Game" -steamINI "steam_appid.ini" -onlineJsonUrl "https://example.com/game_modes.json"
 ```
 
-### 3. Running the Script
+### Example Workflow
+1. The script checks the provided paths and verifies their existence.
+2. Updates the Steam INI file with the current Windows username.
+3. Retrieves online game mode data from the provided JSON URL.
+4. Displays a menu of available game modes for the user to select.
+5. Cleans up old files and downloads new DLC or MyDocuments files if needed.
+6. Backs up save games before any updates.
+7. Clears cache directories if required.
+8. Starts the game in the selected mode.
 
-#### Option 1: Run Directly in PowerShell
-1. Open **PowerShell** as an administrator (if needed).
-2. Navigate to the folder where the script is located using the `cd` command.
-3. Run the script:
-   ```powershell
-   .\Update_CivV_UserName.ps1
-   ```
-
-#### Option 2: Create a Shortcut to Run the Script
-1. Create a shortcut to **PowerShell** and use the following command as the shortcut target:
-   ```plaintext
-   powershell.exe -NoExit -ExecutionPolicy Bypass -File "C:\Path\To\Update_CivV_UserName.ps1"
-   ```
-   Replace `"C:\Path\To\Update_CivV_UserName.ps1"` with the actual path to the script on your system.
-2. Double-click the shortcut to run the script directly.
-
-### 4. Optional: Launch Civilization V
-The script will attempt to launch Civilization V once the necessary conditions are met. This feature is enabled by default. If you want to prevent the game from launching automatically, simply comment out or remove the following line in the script:
-```powershell
-Start-Process -FilePath $gameExecutablePath -ErrorAction Stop
-```
-
-### 5. Customize the Console Output
-The script provides color-coded feedback to the user:
-- **Green**: For success messages.
-- **Red**: For error messages.
-- **Cyan**: For informational messages.
-- **Yellow**: For headers and separators.
-
-### 6. Modify the `UserName` Field Capitalization
-The script automatically capitalizes the first letter of each word in the Windows username using `.ToTitleCase()`. If you wish to modify this behavior, you can adjust the `$currentUserName` logic.
-
-## Example Output
-
-When the script runs, you will see output similar to the following:
-
-```plaintext
-==========================================
-Civilization V Configuration Updater
-==========================================
-Initializing script...
-------------------------------------------
-INI file found at:
-  D:\Games\Sid Meier's Civilization V\steam_api.ini
-------------------------------------------
-Reading INI file...
-UserName updated to:
-  JohnDoe
-Saving updates to INI file...
-INI file updated successfully.
-------------------------------------------
-Game executable found at:
-  D:\Games\Sid Meier's Civilization V\CivilizationV_DX11.exe
-------------------------------------------
-Launching Civilization V...
-Civilization V launched successfully.
-------------------------------------------
-Pausing for 5 seconds before exiting...
-Script execution completed.
-```
+## Notes
+- Ensure that the game root path and Steam INI file path are correct.
+- The script will not proceed without internet access if online resources are required.
 
 ## License
+This script is open-source and provided "as is." Use it at your own risk.
 
-This script is open-source and available under the [MIT License](LICENSE).
