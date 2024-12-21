@@ -375,10 +375,15 @@ try {
         Ensure-Directory $myDocumentsGamePath
             
         if ($needsDLCUpdate -and $selectedMode.DLCDownload) {
+            if (condition) {
+                <# Action to perform if the condition is true #>
+            }
             if (Download-AndExtract -Url $selectedMode.DLCDownload -TargetPath $dlcFolderPath) {
                 Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
                 Write-ColorMessage "DLC files updated successfully" -Color "Green"
             }
+        } else {
+            Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
         }
         
         if ($needsMyDocsUpdate -and $selectedMode.DocsDownload) {
@@ -386,6 +391,8 @@ try {
                 Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
                 Write-ColorMessage "MyDocuments files updated successfully" -Color "Green"
             }
+        } else {
+            Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
         }
     } else {
         Write-ColorMessage "Game files are up to date" -Color "Green"
