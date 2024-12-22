@@ -242,6 +242,117 @@ function Format-Description {
     return $lines -join "`n"
 }
 
+# Function to get the last used mode name
+function Get-LastUsedMode {
+    param (
+        [string]$dlcVersionFile,
+        [string]$myDocsVersionFile
+    )
+    
+    try {
+        if (Test-Path $dlcVersionFile) {
+            $dlcVersion = Get-Content $dlcVersionFile | ConvertFrom-Json
+            return $dlcVersion.Mode
+        } elseif (Test-Path $myDocsVersionFile) {
+            $myDocsVersion = Get-Content $myDocsVersionFile | ConvertFrom-Json
+            return $myDocsVersion.Mode
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
+# Function to manage save games for different modes
+function Manage-SaveGames {
+    param(
+        [string]$currentMode,
+        [string]$previousMode,
+        [string]$savePath,
+        [string]$backupBasePath
+    )
+    
+    # Create the backup root directory if it doesn't exist
+    $backupRootPath = Join-Path $backupBasePath "ModeSaves"
+    Ensure-Directory $backupRootPath
+
+    # Ensure save directory exists
+    Ensure-Directory $savePath
+
+    Write-ColorMessage "`nManaging save games..." -Color "Blue"
+
+    # If there was a previous mode, backup its saves
+    if ($previousMode) {
+        $previousModeBackupPath = Join-Path $backupRootPath ($previousMode -replace '[\\/:*?"<>|]', '_')
+        
+        # Check if there are any files to backup (recursively)
+        $hasFiles = Get-ChildItem -Path $savePath -File -Recurse
+        
+        if ($hasFiles) {
+            Write-ColorMessage "Backing up $previousMode save games..." -Color "Cyan"
+            
+            # Create mode backup directory
+            Ensure-Directory $previousModeBackupPath
+            
+            try {
+                # Get all files with their relative paths
+                $files = Get-ChildItem -Path $savePath -File -Recurse
+                
+                foreach ($file in $files) {
+                    # Calculate relative path from save directory
+                    $relativePath = $file.FullName.Substring($savePath.Length + 1)
+                    $targetFile = Join-Path $previousModeBackupPath $relativePath
+                    $targetDir = Split-Path $targetFile -Parent
+                    
+                    # Ensure target directory exists
+                    if (-not (Test-Path $targetDir)) {
+                        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                    }
+                    
+                    # Copy file to backup location
+                    Copy-Item -Path $file.FullName -Destination $targetFile -Force
+                    # Remove original file
+                    Remove-Item -Path $file.FullName -Force
+                }
+                
+                Write-ColorMessage "Successfully backed up save games for $previousMode" -Color "Green"
+            } catch {
+                Write-ColorMessage "Error backing up saves: $_" -Color "Red"
+            }
+        }
+    }
+
+    # Restore saves for the selected mode if they exist
+    $selectedModeBackupPath = Join-Path $backupRootPath ($currentMode -replace '[\\/:*?"<>|]', '_')
+    if (Test-Path $selectedModeBackupPath) {
+        Write-ColorMessage "Restoring $currentMode save games..." -Color "Cyan"
+        
+        try {
+            # Get all files with their relative paths from backup
+            $files = Get-ChildItem -Path $selectedModeBackupPath -File -Recurse
+            
+            foreach ($file in $files) {
+                # Calculate relative path from backup directory
+                $relativePath = $file.FullName.Substring($selectedModeBackupPath.Length + 1)
+                $targetFile = Join-Path $savePath $relativePath
+                $targetDir = Split-Path $targetFile -Parent
+                
+                # Ensure target directory exists
+                if (-not (Test-Path $targetDir)) {
+                    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                }
+                
+                # Copy file to saves location
+                Copy-Item -Path $file.FullName -Destination $targetFile -Force
+            }
+            Write-ColorMessage "Successfully restored save games for $currentMode" -Color "Green"
+        } catch {
+            Write-ColorMessage "Error restoring saves: $_" -Color "Red"
+        }
+    }
+}
+
+
 # Main script
 try {
     $gameExecutablePath = Join-Path $gameRootPath "CivilizationV_DX11.exe"
@@ -280,38 +391,69 @@ try {
         exit
     }
 
+    # Check versions separately for DLC and MyDocuments
+    $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
+    $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
+    
+    $dlcVersion = if (Test-Path $dlcVersionFile) { 
+        Get-Content $dlcVersionFile | ConvertFrom-Json 
+    } else {
+        $null 
+    }
+    
+    $myDocsVersion = if (Test-Path $myDocsVersionFile) { 
+        Get-Content $myDocsVersionFile | ConvertFrom-Json 
+    } else {
+        $null 
+    }
+     
+
     # Display mode selection menu
     Write-ColorMessage "`nAvailable Game Modes:" -Color "DarkCyan"
     $modes = $onlineData.PlayModes
+
+    # Get last used mode
+    $lastUsedMode = Get-LastUsedMode -dlcVersionFile $dlcVersionFile -myDocsVersionFile $myDocsVersionFile
+
     for ($i = 0; $i -lt $modes.Count; $i++) {
         # Create multiplayer status string with appropriate symbol
         $mpStatus = if ($modes[$i].MultiplayerCompatible) {
-            "Multiplayer Compatible ✓"
+            "Multiplayer Compatible"
         } else {
-            "Single Player Only ⚠"
+            "Single Player Only"
         }
+    
+        # Check if this was the last used mode
+        $isLastUsed = $modes[$i].Name -eq $lastUsedMode
     
         # Write the mode number, name, and multiplayer status on the same line with different colors
         Write-Host "[$($i + 1)] " -NoNewline -ForegroundColor White
         Write-Host "$($modes[$i].Name)" -NoNewline -ForegroundColor White
+
         Write-Host " | " -NoNewline -ForegroundColor Gray
-        Write-Host $mpStatus -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
+        Write-Host $mpStatus -NoNewline -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
                 "Green" 
             } else {
                 "Yellow" 
             })
+        if ($isLastUsed) {
+            Write-Host " | " -NoNewline -ForegroundColor Gray
+            Write-Host "[Currently Installed]" -ForegroundColor Magenta
+        } else {
+            Write-Host ""  # Just for newline
+        }
     
         # Format and display the description with proper wrapping
         $formattedDesc = Format-Description -text $modes[$i].Description
-        Write-ColorMessage $formattedDesc -Color "Cyan"
-    
+        Write-ColorMessage $formattedDesc -Color "Cyan"    
+         
         # Add blank line between modes except after the last one
         if ($i -lt $modes.Count - 1) {
             Write-Host ""
         }
     }
 
-    # Get user selection (keep the existing code)
+    # Get user selection
     do {
         $selection = Read-Host "`nSelect game mode (1-$($modes.Count))"
     } while ([int]$selection -lt 1 -or [int]$selection -gt $modes.Count)
@@ -328,25 +470,14 @@ try {
 
     # Backup saves if enabled
     if ($onlineData.Settings.BackupSaves) {
-        Backup-SaveGames
+        $savePath = Join-Path $myDocumentsGamePath "Saves"
+        Manage-SaveGames `
+            -currentMode $selectedMode.Name `
+            -previousMode $lastUsedMode `
+            -savePath $savePath `
+            -backupBasePath $myDocumentsGamePath
     }
 
-    # Check versions separately for DLC and MyDocuments
-    $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
-    $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
-
-    $dlcVersion = if (Test-Path $dlcVersionFile) { 
-        Get-Content $dlcVersionFile | ConvertFrom-Json 
-    } else {
-        $null 
-    }
-
-    $myDocsVersion = if (Test-Path $myDocsVersionFile) { 
-        Get-Content $myDocsVersionFile | ConvertFrom-Json 
-    } else {
-        $null 
-    }
- 
     $needsDLCUpdate = $dlcVersion -eq $null -or 
     $dlcVersion.Mode -ne $selectedMode.Name -or 
     $dlcVersion.Version -ne $selectedMode.OnlineVersion.DLC
