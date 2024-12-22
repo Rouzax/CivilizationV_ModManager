@@ -250,13 +250,13 @@ function Get-LastUsedMode {
     )
     
     try {
-        if (Test-Path $dlcVersionFile) {
-            $dlcVersion = Get-Content $dlcVersionFile | ConvertFrom-Json
-            return $dlcVersion.Mode
-        } elseif (Test-Path $myDocsVersionFile) {
+        if (Test-Path $myDocsVersionFile) {
             $myDocsVersion = Get-Content $myDocsVersionFile | ConvertFrom-Json
             return $myDocsVersion.Mode
-        }
+        } elseif (Test-Path $dlcVersionFile) {
+            $dlcVersion = Get-Content $dlcVersionFile | ConvertFrom-Json
+            return $dlcVersion.Mode
+        } 
     } catch {
         return $null
     }
@@ -469,14 +469,17 @@ try {
     }
 
     # Backup saves if enabled
-    if ($onlineData.Settings.BackupSaves) {
-        $savePath = Join-Path $myDocumentsGamePath "Saves"
-        Manage-SaveGames `
-            -currentMode $selectedMode.Name `
-            -previousMode $lastUsedMode `
-            -savePath $savePath `
-            -backupBasePath $myDocumentsGamePath
-    }
+    if ($lastUsedMode -ne $selectedMode.Name) {
+        if ($onlineData.Settings.BackupSaves) {
+            $savePath = Join-Path $myDocumentsGamePath "Saves"
+            Manage-SaveGames `
+                -currentMode $selectedMode.Name `
+                -previousMode $lastUsedMode `
+                -savePath $savePath `
+                -backupBasePath $myDocumentsGamePath
+        }
+
+    } 
 
     $needsDLCUpdate = $dlcVersion -eq $null -or 
     $dlcVersion.Mode -ne $selectedMode.Name -or 
