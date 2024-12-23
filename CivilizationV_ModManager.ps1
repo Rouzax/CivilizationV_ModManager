@@ -28,7 +28,8 @@ function Update-Script {
     )
     
     try {
-        $newContent = (Invoke-WebRequest -Uri $updateUrl -UseBasicParsing).Content.Trim()
+        $timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+        $newContent = (Invoke-WebRequest -Uri "$updateUrl`?token=$timestamp" -UseBasicParsing).Content.Trim()
         $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
         
         if ($newContent -ne $currentContent) {
