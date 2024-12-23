@@ -21,46 +21,45 @@ function Test-SchemaVersion {
 }
 
 # Add self-update function
-function Update-Script {
-    param(
-        [string]$updateUrl,
-        [string]$currentPath
-    )
+# function Update-Script {
+#     param(
+#         [string]$updateUrl,
+#         [string]$currentPath
+#     )
     
-    try {
-        $timestamp = [DateTimeOffset]::Now.ToUnixTimeSeconds()
-        $newContent = (Invoke-WebRequest -Uri "$updateUrl`?token=$timestamp" -UseBasicParsing).Content.Trim()
-        $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
+#     try {
+#         $newContent = (Invoke-WebRequest -Uri "$updateUrl`?token=`$(date+%s)" -UseBasicParsing).Content.Trim()
+#         $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
         
-        if ($newContent -ne $currentContent) {
-            Write-ColorMessage "New version available. Update? (Y/N)" -Color "Yellow"
-            $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
+#         if ($newContent -ne $currentContent) {
+#             Write-ColorMessage "New version available. Update? (Y/N)" -Color "Yellow"
+#             $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
             
-            while ($timeoutTask.State -eq 'Running') {
-                if ([Console]::KeyAvailable) {
-                    $key = [Console]::ReadKey($true)
-                    if ($key.Key -eq 'Y') {
-                        $newContent | Set-Content -Path $currentPath -NoNewline
-                        Write-ColorMessage "Script updated successfully" -Color "Green"
-                        Stop-Job $timeoutTask
-                        Remove-Job $timeoutTask
-                        Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
-                        exit
-                    }
-                    elseif ($key.Key -eq 'N') {
-                        Write-ColorMessage "Update skipped" -Color "Yellow"
-                        break
-                    }
-                }
-            }
-            Stop-Job $timeoutTask
-            Remove-Job $timeoutTask
-        }
-    }
-    catch {
-        Write-ColorMessage "Error checking for updates: $_" -Color "Red"
-    }
-}
+#             while ($timeoutTask.State -eq 'Running') {
+#                 if ([Console]::KeyAvailable) {
+#                     $key = [Console]::ReadKey($true)
+#                     if ($key.Key -eq 'Y') {
+#                         $newContent | Set-Content -Path $currentPath -NoNewline
+#                         Write-ColorMessage "Script updated successfully" -Color "Green"
+#                         Stop-Job $timeoutTask
+#                         Remove-Job $timeoutTask
+#                         Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
+#                         exit
+#                     }
+#                     elseif ($key.Key -eq 'N') {
+#                         Write-ColorMessage "Update skipped" -Color "Yellow"
+#                         break
+#                     }
+#                 }
+#             }
+#             Stop-Job $timeoutTask
+#             Remove-Job $timeoutTask
+#         }
+#     }
+#     catch {
+#         Write-ColorMessage "Error checking for updates: $_" -Color "Red"
+#     }
+# }
 
 # Function to write colored console messages with section headers
 function Write-ColorMessage {
@@ -428,10 +427,10 @@ try {
         Test-SchemaVersion -onlineData $onlineData
         
         # Add self-update check if URL is provided
-        if ($onlineData.ScriptUpdateUrl) {
-            Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
-            Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path
-        }
+        # if ($onlineData.ScriptUpdateUrl) {
+        #     Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
+        #     Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path
+        # }
         
         Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
     } catch {
