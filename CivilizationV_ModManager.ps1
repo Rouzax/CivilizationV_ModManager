@@ -420,7 +420,7 @@ try {
     
     # Check online connectivity and get data
     try {
-        Write-ColorMessage -Message "`nGetting online resources" -Color "Blue"
+        Write-ColorMessage -Message "Getting online resources" -Color "Blue"
         $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
         
         # Add schema version check
@@ -442,7 +442,7 @@ try {
 
     # Update $steamINI with username
     if (Test-Path $iniFilePath) {
-        write-ColorMessage -Message "Updating Multiplayer user name" -Color "Blue"
+        write-ColorMessage -Message "`nUpdating Multiplayer user name" -Color "Blue"
         $currentUserName = (Get-Culture).TextInfo.ToTitleCase($env:USERNAME)
         $iniContent = Get-Content $iniFilePath
         $iniContent = $iniContent -replace "UserName=.*", "UserName=$currentUserName"
