@@ -28,10 +28,10 @@ function Update-Script {
     )
     
     try {
-        $newContent = Invoke-WebRequest -Uri $updateUrl -UseBasicParsing
-        $currentContent = Get-Content -Path $currentPath -Raw
+        $newContent = (Invoke-WebRequest -Uri $updateUrl -UseBasicParsing).Content.Trim()
+        $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
         
-        if ($newContent.Content -ne $currentContent) {
+        if ($newContent -ne $currentContent) {
             Write-ColorMessage "New version available. Update? (Y/N)" -Color "Yellow"
             $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
             
@@ -39,13 +39,14 @@ function Update-Script {
                 if ([Console]::KeyAvailable) {
                     $key = [Console]::ReadKey($true)
                     if ($key.Key -eq 'Y') {
-                        $newContent.Content | Set-Content -Path $currentPath
+                        $newContent | Set-Content -Path $currentPath -NoNewline
                         Write-ColorMessage "Script updated successfully" -Color "Green"
                         Stop-Job $timeoutTask
                         Remove-Job $timeoutTask
                         Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
                         exit
-                    } elseif ($key.Key -eq 'N') {
+                    }
+                    elseif ($key.Key -eq 'N') {
                         Write-ColorMessage "Update skipped" -Color "Yellow"
                         break
                     }
@@ -54,7 +55,8 @@ function Update-Script {
             Stop-Job $timeoutTask
             Remove-Job $timeoutTask
         }
-    } catch {
+    }
+    catch {
         Write-ColorMessage "Error checking for updates: $_" -Color "Red"
     }
 }
