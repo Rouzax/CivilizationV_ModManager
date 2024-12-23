@@ -16,7 +16,7 @@ function Test-SchemaVersion {
     
     $requiredVersion = "1.0"
     if ($onlineData.schemaVersion -ne $requiredVersion) {
-        throw "Incompatible schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
+        throw "Incompatible online schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
     }
 }
 
