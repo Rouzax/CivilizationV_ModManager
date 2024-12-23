@@ -10,6 +10,55 @@ param(
     [string]$onlineJsonUrl
 )
 
+# Add schema version check function
+function Test-SchemaVersion {
+    param([PSObject]$onlineData)
+    
+    $requiredVersion = "1.0"
+    if ($onlineData.schemaVersion -ne $requiredVersion) {
+        throw "Incompatible schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
+    }
+}
+
+# Add self-update function
+function Update-Script {
+    param(
+        [string]$updateUrl,
+        [string]$currentPath
+    )
+    
+    try {
+        $newContent = Invoke-WebRequest -Uri $updateUrl -UseBasicParsing
+        $currentContent = Get-Content -Path $currentPath -Raw
+        
+        if ($newContent.Content -ne $currentContent) {
+            Write-ColorMessage "New version available. Update? (Y/N)" -Color "Yellow"
+            $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
+            
+            while ($timeoutTask.State -eq 'Running') {
+                if ([Console]::KeyAvailable) {
+                    $key = [Console]::ReadKey($true)
+                    if ($key.Key -eq 'Y') {
+                        $newContent.Content | Set-Content -Path $currentPath
+                        Write-ColorMessage "Script updated successfully" -Color "Green"
+                        Stop-Job $timeoutTask
+                        Remove-Job $timeoutTask
+                        Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
+                        exit
+                    } elseif ($key.Key -eq 'N') {
+                        Write-ColorMessage "Update skipped" -Color "Yellow"
+                        break
+                    }
+                }
+            }
+            Stop-Job $timeoutTask
+            Remove-Job $timeoutTask
+        }
+    } catch {
+        Write-ColorMessage "Error checking for updates: $_" -Color "Red"
+    }
+}
+
 # Function to write colored console messages with section headers
 function Write-ColorMessage {
     param(
@@ -366,6 +415,28 @@ try {
     if (-not (Test-Path $gameRootPath)) {
         throw "Game root path does not exist: $gameRootPath"
     }
+    
+    # Check online connectivity and get data
+    try {
+        Write-ColorMessage -Message "`nGetting online resources" -Color "Blue"
+        $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
+        
+        # Add schema version check
+        Test-SchemaVersion -onlineData $onlineData
+        
+        # Add self-update check if URL is provided
+        if ($onlineData.ScriptUpdateUrl) {
+            Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
+            Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path
+        }
+        
+        Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
+    } catch {
+        Write-ColorMessage "Cannot access online data, starting game in default mode" -Color "Yellow"
+        Start-Process $gameExecutablePath
+        Start-Sleep -Seconds 5
+        exit
+    }
 
     # Update $steamINI with username
     if (Test-Path $iniFilePath) {
@@ -377,18 +448,6 @@ try {
         Write-ColorMessage "Updated username to: $currentUserName in $steamINI" -Color "Green"
     } else {
         Write-ColorMessage "Warning: $steamINI not found" -Color "Yellow"
-    }
-
-    # Check online connectivity
-    try {
-        write-ColorMessage -Message "`nGetting online resources" -Color "Blue"
-        $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
-        Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
-    } catch {
-        Write-ColorMessage "Cannot access online data, starting game in default mode" -Color "Yellow"
-        Start-Process $gameExecutablePath
-        Start-Sleep -Seconds 5
-        exit
     }
 
     # Check versions separately for DLC and MyDocuments
