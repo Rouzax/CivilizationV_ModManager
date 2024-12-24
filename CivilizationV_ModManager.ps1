@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.1"
+$SCRIPT_VERSION = "1.0.2"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -19,7 +19,7 @@ function Test-SchemaVersion {
     
     $requiredVersion = "1.0"
     if ($onlineData.schemaVersion -ne $requiredVersion) {
-        throw "Incompatible online schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
+        throw "Incompatible online JSON schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
     }
 }
 
@@ -43,7 +43,7 @@ function Update-Script {
             $new = [version]$newVersion
             
             if ($new -gt $current) {
-                Write-ColorMessage "New version available ($newVersion). Current version: $currentVersion" -Color "Yellow"
+                Write-ColorMessage "New script version available ($newVersion). Current version: $currentVersion" -Color "Yellow"
                 Write-ColorMessage "Update? (Y/N)" -Color "Yellow"
                 $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
                 
@@ -66,9 +66,6 @@ function Update-Script {
                 }
                 Stop-Job $timeoutTask
                 Remove-Job $timeoutTask
-            }
-            else {
-                Write-ColorMessage "No updates available (Current: $currentVersion, Online: $newVersion)" -Color "Green"
             }
         }
         else {
@@ -447,7 +444,6 @@ try {
         
         # Add self-update check if URL is provided
         if ($onlineData.ScriptUpdateUrl) {
-            Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
             Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path -currentVersion $SCRIPT_VERSION
         }
         
