@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.0.1"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -33,7 +33,6 @@ function Update-Script {
     
     try {
         $newContent = (Invoke-WebRequest -Uri $updateUrl -UseBasicParsing).Content.Trim()
-        $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
         
         # Extract version from new content
         if ($newContent -match '\$SCRIPT_VERSION\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') {
@@ -446,7 +445,7 @@ try {
         # Add schema version check
         Test-SchemaVersion -onlineData $onlineData
         
-        Add self-update check if URL is provided
+        # Add self-update check if URL is provided
         if ($onlineData.ScriptUpdateUrl) {
             Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
             Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path -currentVersion $SCRIPT_VERSION
