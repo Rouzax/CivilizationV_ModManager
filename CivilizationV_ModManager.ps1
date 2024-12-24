@@ -10,6 +10,9 @@ param(
     [string]$onlineJsonUrl
 )
 
+# Add version number after param block
+$SCRIPT_VERSION = "1.0.0"
+
 # Add schema version check function
 function Test-SchemaVersion {
     param([PSObject]$onlineData)
@@ -24,36 +27,53 @@ function Test-SchemaVersion {
 function Update-Script {
     param(
         [string]$updateUrl,
-        [string]$currentPath
+        [string]$currentPath,
+        [string]$currentVersion
     )
     
     try {
         $newContent = (Invoke-WebRequest -Uri $updateUrl -UseBasicParsing).Content.Trim()
         $currentContent = (Get-Content -Path $currentPath -Raw).Trim()
         
-        if ($newContent -ne $currentContent) {
-            Write-ColorMessage "New version available. Update? (Y/N)" -Color "Yellow"
-            $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
+        # Extract version from new content
+        if ($newContent -match '\$SCRIPT_VERSION\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') {
+            $newVersion = $matches[1]
             
-            while ($timeoutTask.State -eq 'Running') {
-                if ([Console]::KeyAvailable) {
-                    $key = [Console]::ReadKey($true)
-                    if ($key.Key -eq 'Y') {
-                        $newContent | Set-Content -Path $currentPath -NoNewline
-                        Write-ColorMessage "Script updated successfully" -Color "Green"
-                        Stop-Job $timeoutTask
-                        Remove-Job $timeoutTask
-                        Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
-                        exit
-                    }
-                    elseif ($key.Key -eq 'N') {
-                        Write-ColorMessage "Update skipped" -Color "Yellow"
-                        break
+            # Compare versions
+            $current = [version]$currentVersion
+            $new = [version]$newVersion
+            
+            if ($new -gt $current) {
+                Write-ColorMessage "New version available ($newVersion). Current version: $currentVersion" -Color "Yellow"
+                Write-ColorMessage "Update? (Y/N)" -Color "Yellow"
+                $timeoutTask = Start-Job { Start-Sleep -Seconds 5 }
+                
+                while ($timeoutTask.State -eq 'Running') {
+                    if ([Console]::KeyAvailable) {
+                        $key = [Console]::ReadKey($true)
+                        if ($key.Key -eq 'Y') {
+                            $newContent | Set-Content -Path $currentPath -NoNewline
+                            Write-ColorMessage "Script updated successfully to version $newVersion" -Color "Green"
+                            Stop-Job $timeoutTask
+                            Remove-Job $timeoutTask
+                            Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
+                            exit
+                        }
+                        elseif ($key.Key -eq 'N') {
+                            Write-ColorMessage "Update skipped" -Color "Yellow"
+                            break
+                        }
                     }
                 }
+                Stop-Job $timeoutTask
+                Remove-Job $timeoutTask
             }
-            Stop-Job $timeoutTask
-            Remove-Job $timeoutTask
+            else {
+                Write-ColorMessage "No updates available (Current: $currentVersion, Online: $newVersion)" -Color "Green"
+            }
+        }
+        else {
+            Write-ColorMessage "Could not determine version of update script" -Color "Red"
         }
     }
     catch {
@@ -426,11 +446,11 @@ try {
         # Add schema version check
         Test-SchemaVersion -onlineData $onlineData
         
-        # Add self-update check if URL is provided
-        # if ($onlineData.ScriptUpdateUrl) {
-        #     Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
-        #     Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path
-        # }
+        Add self-update check if URL is provided
+        if ($onlineData.ScriptUpdateUrl) {
+            Write-ColorMessage "`nChecking for script updates..." -Color "Blue"
+            Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path -currentVersion $SCRIPT_VERSION
+        }
         
         Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
     } catch {
