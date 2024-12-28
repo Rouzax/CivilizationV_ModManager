@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.2"
+$SCRIPT_VERSION = "1.0.3"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -57,8 +57,7 @@ function Update-Script {
                             Remove-Job $timeoutTask
                             Start-Process powershell -ArgumentList "-File `"$currentPath`" -gameRootPath `"$gameRootPath`" -steamINI `"$steamINI`" -onlineJsonUrl `"$onlineJsonUrl`""
                             exit
-                        }
-                        elseif ($key.Key -eq 'N') {
+                        } elseif ($key.Key -eq 'N') {
                             Write-ColorMessage "Update skipped" -Color "Yellow"
                             break
                         }
@@ -67,12 +66,10 @@ function Update-Script {
                 Stop-Job $timeoutTask
                 Remove-Job $timeoutTask
             }
-        }
-        else {
+        } else {
             Write-ColorMessage "Could not determine version of update script" -Color "Red"
         }
-    }
-    catch {
+    } catch {
         Write-ColorMessage "Error checking for updates: $_" -Color "Red"
     }
 }
@@ -419,6 +416,69 @@ function Manage-SaveGames {
     }
 }
 
+# Add new function to display the menu and get selection
+function Show-ModeMenu {
+    param(
+        [array]$modes,
+        [string]$lastUsedMode
+    )
+
+    Write-ColorMessage "`nAvailable Options:" -Color "DarkCyan"
+
+    # Display cache clearing option first
+    Write-Host "[0] " -NoNewline -ForegroundColor White
+    Write-Host "Clear Cache Only" -ForegroundColor Yellow
+    $formattedDesc = Format-Description -text "Clears game cache without changing mods. Use this if you're experiencing issues with your current setup."
+    Write-ColorMessage $formattedDesc -Color "Cyan"
+    Write-Host ""
+
+    # Display regular mode options
+    for ($i = 0; $i -lt $modes.Count; $i++) {
+        # Create multiplayer status string with appropriate symbol
+        $mpStatus = if ($modes[$i].MultiplayerCompatible) {
+            "Multiplayer Compatible"
+        } else {
+            "Single Player Only"
+        }
+    
+        # Check if this was the last used mode
+        $isLastUsed = $modes[$i].Name -eq $lastUsedMode
+    
+        # Write the mode number, name, and multiplayer status
+        Write-Host "[$($i + 1)] " -NoNewline -ForegroundColor White
+        Write-Host "$($modes[$i].Name)" -NoNewline -ForegroundColor White
+
+        Write-Host " | " -NoNewline -ForegroundColor Gray
+        Write-Host $mpStatus -NoNewline -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
+                "Green" 
+            } else {
+                "Yellow" 
+            })
+        if ($isLastUsed) {
+            Write-Host " | " -NoNewline -ForegroundColor Gray
+            Write-Host "[Currently Installed]" -ForegroundColor Magenta
+        } else {
+            Write-Host ""  # Just for newline
+        }
+    
+        # Format and display the description with proper wrapping
+        $formattedDesc = Format-Description -text $modes[$i].Description
+        Write-ColorMessage $formattedDesc -Color "Cyan"    
+         
+        # Add blank line between modes except after the last one
+        if ($i -lt $modes.Count - 1) {
+            Write-Host ""
+        }
+    }
+
+    # Get user selection
+    do {
+        $selection = Read-Host "`nSelect option (0-$($modes.Count))"
+    } while ([int]$selection -lt 0 -or [int]$selection -gt $modes.Count)
+
+    return $selection
+}
+
 
 # Main script
 try {
@@ -467,155 +527,121 @@ try {
         Write-ColorMessage "Warning: $steamINI not found" -Color "Yellow"
     }
 
-    # Check versions separately for DLC and MyDocuments
-    $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
-    $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
-    
-    $dlcVersion = if (Test-Path $dlcVersionFile) { 
-        Get-Content $dlcVersionFile | ConvertFrom-Json 
-    } else {
-        $null 
-    }
-    
-    $myDocsVersion = if (Test-Path $myDocsVersionFile) { 
-        Get-Content $myDocsVersionFile | ConvertFrom-Json 
-    } else {
-        $null 
-    }
-     
-
-    # Display mode selection menu
-    Write-ColorMessage "`nAvailable Game Modes:" -Color "DarkCyan"
-    $modes = $onlineData.PlayModes
-
-    # Get last used mode
-    $lastUsedMode = Get-LastUsedMode -dlcVersionFile $dlcVersionFile -myDocsVersionFile $myDocsVersionFile
-
-    for ($i = 0; $i -lt $modes.Count; $i++) {
-        # Create multiplayer status string with appropriate symbol
-        $mpStatus = if ($modes[$i].MultiplayerCompatible) {
-            "Multiplayer Compatible"
+    while ($true) {
+        # Check versions separately for DLC and MyDocuments
+        $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
+        $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
+        
+        $dlcVersion = if (Test-Path $dlcVersionFile) { 
+            Get-Content $dlcVersionFile | ConvertFrom-Json 
         } else {
-            "Single Player Only"
-        }
-    
-        # Check if this was the last used mode
-        $isLastUsed = $modes[$i].Name -eq $lastUsedMode
-    
-        # Write the mode number, name, and multiplayer status on the same line with different colors
-        Write-Host "[$($i + 1)] " -NoNewline -ForegroundColor White
-        Write-Host "$($modes[$i].Name)" -NoNewline -ForegroundColor White
-
-        Write-Host " | " -NoNewline -ForegroundColor Gray
-        Write-Host $mpStatus -NoNewline -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
-                "Green" 
-            } else {
-                "Yellow" 
-            })
-        if ($isLastUsed) {
-            Write-Host " | " -NoNewline -ForegroundColor Gray
-            Write-Host "[Currently Installed]" -ForegroundColor Magenta
-        } else {
-            Write-Host ""  # Just for newline
-        }
-    
-        # Format and display the description with proper wrapping
-        $formattedDesc = Format-Description -text $modes[$i].Description
-        Write-ColorMessage $formattedDesc -Color "Cyan"    
-         
-        # Add blank line between modes except after the last one
-        if ($i -lt $modes.Count - 1) {
-            Write-Host ""
-        }
-    }
-
-    # Get user selection
-    do {
-        $selection = Read-Host "`nSelect game mode (1-$($modes.Count))"
-    } while ([int]$selection -lt 1 -or [int]$selection -gt $modes.Count)
-    
-    $selectedMode = $modes[$selection - 1]
-    Write-ColorMessage "Selected mode: $($selectedMode.Name)" -Color "Green"
-    
-    # Add multiplayer compatibility warning if needed
-    if (-not $selectedMode.MultiplayerCompatible) {
-        Write-ColorMessage "Note: This mode is designed for single-player only" -Color "Yellow"
-    } elseif ($selectedMode.Name -match "multiplayer|EUI|Vox Populi") {
-        Write-ColorMessage "Note: For multiplayer, all players must use identical mod configuration" -Color "Cyan"
-    }
-
-    # Backup saves if enabled
-    if ($lastUsedMode -ne $selectedMode.Name) {
-        if ($onlineData.Settings.BackupSaves) {
-            $savePath = Join-Path $myDocumentsGamePath "Saves"
-            Manage-SaveGames `
-                -currentMode $selectedMode.Name `
-                -previousMode $lastUsedMode `
-                -savePath $savePath `
-                -backupBasePath $myDocumentsGamePath
-        }
-
-    } 
-
-    $needsDLCUpdate = $dlcVersion -eq $null -or 
-    $dlcVersion.Mode -ne $selectedMode.Name -or 
-    $dlcVersion.Version -ne $selectedMode.OnlineVersion.DLC
-
-    $needsMyDocsUpdate = $myDocsVersion -eq $null -or 
-    $myDocsVersion.Mode -ne $selectedMode.Name -or 
-    $myDocsVersion.Version -ne $selectedMode.OnlineVersion.MyDocuments
-
-    if ($needsDLCUpdate -or $needsMyDocsUpdate) {
-        Write-ColorMessage "`nGame files need updating" -Color "Blue"
-            
-        # Clean up old files if enabled, but only for locations that need updating
-        if ($onlineData.Settings.CleanupOnModeSwitch) {
-            $oldFiles = $modes | Where-Object { $_.Name -ne $selectedMode.Name } |
-                ForEach-Object { $_.Files + $_.Folders }
-            if ($needsDLCUpdate) {
-                Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "DLC"
-            }
-            if ($needsMyDocsUpdate) {
-                Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "MyDocuments"
-            }
-        }
-            
-        # Download and extract required files
-        Ensure-Directory $dlcFolderPath
-        Ensure-Directory $myDocumentsGamePath
-            
-        if ($needsDLCUpdate -and $selectedMode.DLCDownload) {
-            if (Download-AndExtract -Url $selectedMode.DLCDownload -TargetPath $dlcFolderPath) {
-                Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
-                Write-ColorMessage "DLC files updated successfully" -Color "Green"
-            }
-        } else {
-            Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
+            $null 
         }
         
-        if ($needsMyDocsUpdate -and $selectedMode.DocsDownload) {
-            if (Download-AndExtract -Url $selectedMode.DocsDownload -TargetPath $myDocumentsGamePath) {
+        $myDocsVersion = if (Test-Path $myDocsVersionFile) { 
+            Get-Content $myDocsVersionFile | ConvertFrom-Json 
+        } else {
+            $null 
+        }
+
+        # Get last used mode
+        $lastUsedMode = Get-LastUsedMode -dlcVersionFile $dlcVersionFile -myDocsVersionFile $myDocsVersionFile
+
+        # Show menu and get selection
+        $selection = Show-ModeMenu -modes $onlineData.PlayModes -lastUsedMode $lastUsedMode
+
+        # Handle cache clearing option
+        if ($selection -eq "0") {
+            Write-ColorMessage "`nClearing cache directories..." -Color "Blue"
+            Clear-CacheDirectories -myDocumentsPath $myDocumentsGamePath
+            Write-ColorMessage "Cache clearing complete." -Color "Green"
+            continue
+        }
+
+        # Regular mode selection
+        $selectedMode = $onlineData.PlayModes[$selection - 1]
+        Write-ColorMessage "Selected mode: $($selectedMode.Name)" -Color "Green"
+
+        # Add multiplayer compatibility warning if needed
+        if (-not $selectedMode.MultiplayerCompatible) {
+            Write-ColorMessage "Note: This mode is designed for single-player only" -Color "Yellow"
+        } elseif ($selectedMode.Name -match "multiplayer|EUI|Vox Populi") {
+            Write-ColorMessage "Note: For multiplayer, all players must use identical mod configuration" -Color "Cyan"
+        }
+
+
+        # Backup saves if enabled
+        if ($lastUsedMode -ne $selectedMode.Name) {
+            if ($onlineData.Settings.BackupSaves) {
+                $savePath = Join-Path $myDocumentsGamePath "Saves"
+                Manage-SaveGames `
+                    -currentMode $selectedMode.Name `
+                    -previousMode $lastUsedMode `
+                    -savePath $savePath `
+                    -backupBasePath $myDocumentsGamePath
+            }
+
+        } 
+
+        $needsDLCUpdate = $dlcVersion -eq $null -or 
+        $dlcVersion.Mode -ne $selectedMode.Name -or 
+        $dlcVersion.Version -ne $selectedMode.OnlineVersion.DLC
+
+        $needsMyDocsUpdate = $myDocsVersion -eq $null -or 
+        $myDocsVersion.Mode -ne $selectedMode.Name -or 
+        $myDocsVersion.Version -ne $selectedMode.OnlineVersion.MyDocuments
+
+        if ($needsDLCUpdate -or $needsMyDocsUpdate) {
+            Write-ColorMessage "`nGame files need updating" -Color "Blue"
+            
+            # Clean up old files if enabled, but only for locations that need updating
+            if ($onlineData.Settings.CleanupOnModeSwitch) {
+                $oldFiles = $modes | Where-Object { $_.Name -ne $selectedMode.Name } |
+                    ForEach-Object { $_.Files + $_.Folders }
+                if ($needsDLCUpdate) {
+                    Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "DLC"
+                }
+                if ($needsMyDocsUpdate) {
+                    Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "MyDocuments"
+                }
+            }
+            
+            # Download and extract required files
+            Ensure-Directory $dlcFolderPath
+            Ensure-Directory $myDocumentsGamePath
+            
+            if ($needsDLCUpdate -and $selectedMode.DLCDownload) {
+                if (Download-AndExtract -Url $selectedMode.DLCDownload -TargetPath $dlcFolderPath) {
+                    Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
+                    Write-ColorMessage "DLC files updated successfully" -Color "Green"
+                }
+            } else {
+                Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
+            }
+        
+            if ($needsMyDocsUpdate -and $selectedMode.DocsDownload) {
+                if (Download-AndExtract -Url $selectedMode.DocsDownload -TargetPath $myDocumentsGamePath) {
+                    Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
+                    Write-ColorMessage "MyDocuments files updated successfully" -Color "Green"
+                }
+            } else {
                 Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
-                Write-ColorMessage "MyDocuments files updated successfully" -Color "Green"
             }
         } else {
-            Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
+            Write-ColorMessage "Game files are up to date" -Color "Green"
         }
-    } else {
-        Write-ColorMessage "Game files are up to date" -Color "Green"
+
+        # Check if we need to clear cache directories
+        if (Test-NeedsCacheClearing -dlcVersion $dlcVersion -myDocsVersion $myDocsVersion -selectedMode $selectedMode) {
+            Clear-CacheDirectories -myDocumentsPath $myDocumentsGamePath
+        }
+
+        # Start the game
+        Write-ColorMessage "`nStarting Civilization V..." -Color "Green"
+        Start-Process $gameExecutablePath
+        # Pause for 5 seconds before ending the script
+        Start-Sleep -Seconds 5
     }
-
-    # Check if we need to clear cache directories
-    if (Test-NeedsCacheClearing -dlcVersion $dlcVersion -myDocsVersion $myDocsVersion -selectedMode $selectedMode) {
-        Clear-CacheDirectories -myDocumentsPath $myDocumentsGamePath
-    }
-
-    # Start the game
-    Write-ColorMessage "`nStarting Civilization V..." -Color "Green"
-    Start-Process $gameExecutablePath
-    # Pause for 5 seconds before ending the script
-    Start-Sleep -Seconds 5
-
 } catch {
     Write-ColorMessage "An error occurred: $_" -Color "Red"
     Write-ColorMessage "Press any key to exit..."
