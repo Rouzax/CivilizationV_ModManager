@@ -527,7 +527,7 @@ try {
         Write-ColorMessage "Warning: $steamINI not found" -Color "Yellow"
     }
 
-    while ($true) {
+    do {
         # Check versions separately for DLC and MyDocuments
         $dlcVersionFile = Join-Path $gameRootPath "version_dlc.json"
         $myDocsVersionFile = Join-Path $myDocumentsGamePath "version_mydocuments.json"
@@ -641,7 +641,8 @@ try {
         Start-Process $gameExecutablePath
         # Pause for 5 seconds before ending the script
         Start-Sleep -Seconds 5
-    }
+        break
+    } while ($selection -eq "0")
 } catch {
     Write-ColorMessage "An error occurred: $_" -Color "Red"
     Write-ColorMessage "Press any key to exit..."
