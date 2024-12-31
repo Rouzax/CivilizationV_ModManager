@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.3"
+$SCRIPT_VERSION = "1.0.4"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -115,23 +115,127 @@ function Backup-SaveGames {
     }
 }
 
-# Function to download and extract ZIP files
+# Function to manage cached downloads
+function Get-CachedDownload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+        [Parameter(Mandatory = $true)]
+        [string]$ModeName,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("DLC", "MyDocuments")]
+        [string]$LocationType
+    )
+    
+    # Create cache directory structure
+    $cacheBasePath = Join-Path $gameRootPath "ModCache"
+    $modeCache = Join-Path $cacheBasePath ($ModeName -replace '[\\/:*?"<>|]', '_')
+    $versionCache = Join-Path $modeCache $Version
+    $locationCache = Join-Path $versionCache $LocationType
+    
+    # Create cache directory if it doesn't exist
+    Ensure-Directory $locationCache
+    
+    # Generate cache file path
+    $fileName = [System.IO.Path]::GetFileName($Url)
+    $cachePath = Join-Path $locationCache $fileName
+    
+    # Check if file exists in cache with correct version
+    if (Test-Path $cachePath) {
+        Write-ColorMessage "Using cached version of $fileName" -Color "Cyan"
+        return $cachePath
+    }
+    
+    # If not in cache, download and store in cache
+    try {
+        Write-ColorMessage "Downloading $fileName to cache" -Color "Blue"
+        Invoke-WebRequest -Uri $Url -OutFile $cachePath
+        Write-ColorMessage "Successfully cached $fileName" -Color "Green"
+        return $cachePath
+    } catch {
+        Write-ColorMessage "Error downloading to cache: $_" -Color "Red"
+        if (Test-Path $cachePath) {
+            Remove-Item $cachePath -Force
+        }
+        return $null
+    }
+}
+
+# Function to clean old cache entries
+function Clear-OldCache {
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$CurrentModes
+    )
+    
+    $cacheBasePath = Join-Path $gameRootPath "ModCache"
+    if (-not (Test-Path $cacheBasePath)) {
+        return
+    }
+    
+    Write-ColorMessage "`nChecking for outdated cache entries..." -Color "Blue"
+    
+    # Get all cached mode directories
+    $cachedModes = Get-ChildItem -Path $cacheBasePath -Directory
+    
+    foreach ($modeDir in $cachedModes) {
+        # Find corresponding mode in current modes
+        $currentMode = $CurrentModes | Where-Object { ($_.Name -replace '[\\/:*?"<>|]', '_') -eq $modeDir.Name }
+        
+        if ($null -eq $currentMode) {
+            # Mode no longer exists, remove entire directory
+            Write-ColorMessage "Removing cache for obsolete mode: $($modeDir.Name)" -Color "Yellow"
+            Remove-Item $modeDir.FullName -Recurse -Force
+            continue
+        }
+        
+        # Check versions
+        $versionDirs = Get-ChildItem -Path $modeDir.FullName -Directory
+        foreach ($versionDir in $versionDirs) {
+            $isCurrentVersion = $false
+            if ($currentMode.OnlineVersion.DLC -eq $versionDir.Name -or 
+                $currentMode.OnlineVersion.MyDocuments -eq $versionDir.Name) {
+                $isCurrentVersion = $true
+            }
+            
+            if (-not $isCurrentVersion) {
+                Write-ColorMessage "Removing outdated version cache: $($modeDir.Name) v$($versionDir.Name)" -Color "Yellow"
+                Remove-Item $versionDir.FullName -Recurse -Force
+            }
+        }
+    }
+}
+
+# Download-AndExtract function to use cache
 function Download-AndExtract {
     param(
         [string]$Url,
-        [string]$TargetPath
+        [string]$TargetPath,
+        [string]$Version,
+        [string]$ModeName,
+        [string]$LocationType
     )
+    
+    if ([string]::IsNullOrEmpty($Url)) {
+        return $true
+    }
+    
     try {
+        # Get file from cache or download
+        $sourcePath = Get-CachedDownload -Url $Url -Version $Version -ModeName $ModeName -LocationType $LocationType
         
-        $tempFile = Join-Path $env:TEMP ([System.IO.Path]::GetFileName($Url))
-        Write-ColorMessage "`nDownloading: $Url" -Color "Blue"
-        Invoke-WebRequest -Uri $Url -OutFile $tempFile
+        if ($null -eq $sourcePath) {
+            return $false
+        }
+        
         Write-ColorMessage "Extracting to: $TargetPath" -Color "Cyan"
-        Expand-Archive -Path $tempFile -DestinationPath $TargetPath -Force
-        Remove-Item $tempFile -Force
+        Expand-Archive -Path $sourcePath -DestinationPath $TargetPath -Force
+        Write-ColorMessage "Extraction complete" -Color "Green"
         return $true
     } catch {
-        Write-ColorMessage "Error during download/extract: $_" -Color "Red"
+        Write-ColorMessage "Error during extraction: $_" -Color "Red"
         return $false
     }
 }
@@ -605,22 +709,35 @@ try {
                     Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "MyDocuments"
                 }
             }
+
+            # Clear old cache entries at startup
+            Clear-OldCache -CurrentModes $onlineData.PlayModes
             
             # Download and extract required files
             Ensure-Directory $dlcFolderPath
             Ensure-Directory $myDocumentsGamePath
             
             if ($needsDLCUpdate -and $selectedMode.DLCDownload) {
-                if (Download-AndExtract -Url $selectedMode.DLCDownload -TargetPath $dlcFolderPath) {
+                if (Download-AndExtract `
+                        -Url $selectedMode.DLCDownload `
+                        -TargetPath $dlcFolderPath `
+                        -Version $selectedMode.OnlineVersion.DLC `
+                        -ModeName $selectedMode.Name `
+                        -LocationType "DLC") {
                     Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
                     Write-ColorMessage "DLC files updated successfully" -Color "Green"
                 }
             } else {
                 Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.DLC -Location "DLC" -BasePath $gameRootPath
             }
-        
+            
             if ($needsMyDocsUpdate -and $selectedMode.DocsDownload) {
-                if (Download-AndExtract -Url $selectedMode.DocsDownload -TargetPath $myDocumentsGamePath) {
+                if (Download-AndExtract `
+                        -Url $selectedMode.DocsDownload `
+                        -TargetPath $myDocumentsGamePath `
+                        -Version $selectedMode.OnlineVersion.MyDocuments `
+                        -ModeName $selectedMode.Name `
+                        -LocationType "MyDocuments") {
                     Update-LocalVersion -Mode $selectedMode.Name -Version $selectedMode.OnlineVersion.MyDocuments -Location "MyDocuments" -BasePath $myDocumentsGamePath
                     Write-ColorMessage "MyDocuments files updated successfully" -Color "Green"
                 }
