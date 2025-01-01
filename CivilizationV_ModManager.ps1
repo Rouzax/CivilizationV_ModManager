@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.4"
+$SCRIPT_VERSION = "1.0.5"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -73,6 +73,52 @@ function Update-Script {
         Write-ColorMessage "Error checking for updates: $_" -Color "Red"
     }
 }
+
+# Function to handle JSON caching and retrieval
+function Get-CachedJsonData {
+    param(
+        [string]$onlineJsonUrl,
+        [string]$gameRootPath
+    )
+    
+    $cachedJsonPath = Join-Path $gameRootPath "modmanager_cache.json"
+    $result = @{
+        Data     = $null
+        IsOnline = $false
+    }
+    
+    try {
+        # Try to get online data first
+        Write-ColorMessage -Message "Getting online resources" -Color "Blue"
+        $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
+        
+        # Cache the successful response
+        $onlineData | ConvertTo-Json -Depth 10 | Set-Content -Path $cachedJsonPath -Force
+        Write-ColorMessage "Successfully retrieved and cached online game mode data" -Color "Green"
+        
+        $result.Data = $onlineData
+        $result.IsOnline = $true
+        return $result
+    } catch {
+        # If online fetch fails, try to use cached data
+        if (Test-Path $cachedJsonPath) {
+            Write-ColorMessage "Cannot access online data, using cached configuration" -Color "Yellow"
+            try {
+                $cachedData = Get-Content $cachedJsonPath | ConvertFrom-Json
+                $result.Data = $cachedData
+                $result.IsOnline = $false
+                return $result
+            } catch {
+                Write-ColorMessage "Error reading cached data: $_" -Color "Red"
+                return $result
+            }
+        } else {
+            Write-ColorMessage "No cached configuration available" -Color "Yellow"
+            return $result
+        }
+    }
+}
+
 
 # Function to write colored console messages with section headers
 function Write-ColorMessage {
@@ -520,14 +566,60 @@ function Manage-SaveGames {
     }
 }
 
-# Add new function to display the menu and get selection
+# Add new function to check if mode is available offline
+function Test-ModeOfflineAvailable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSObject]$mode,
+        [Parameter(Mandatory = $true)]
+        [string]$gameRootPath
+    )
+    
+    $cacheBasePath = Join-Path $gameRootPath "ModCache"
+    $modeCache = Join-Path $cacheBasePath ($mode.Name -replace '[\\/:*?"<>|]', '_')
+    
+    # Check DLC cache if DLCDownload is specified
+    if ($mode.DLCDownload) {
+        $dlcCache = Join-Path $modeCache $mode.OnlineVersion.DLC
+        $dlcCache = Join-Path $dlcCache "DLC"
+        $dlcFileName = [System.IO.Path]::GetFileName($mode.DLCDownload)
+        $dlcFilePath = Join-Path $dlcCache $dlcFileName
+        
+        if (-not (Test-Path $dlcFilePath)) {
+            return $false
+        }
+    }
+    
+    # Check MyDocuments cache if DocsDownload is specified
+    if ($mode.DocsDownload) {
+        $docsCache = Join-Path $modeCache $mode.OnlineVersion.MyDocuments
+        $docsCache = Join-Path $docsCache "MyDocuments"
+        $docsFileName = [System.IO.Path]::GetFileName($mode.DocsDownload)
+        $docsFilePath = Join-Path $docsCache $docsFileName
+        
+        if (-not (Test-Path $docsFilePath)) {
+            return $false
+        }
+    }
+    
+    # If we get here, either all required caches exist or no downloads are needed
+    return $true
+}
+
+# Modified Show-ModeMenu function
 function Show-ModeMenu {
     param(
         [array]$modes,
-        [string]$lastUsedMode
+        [string]$lastUsedMode,
+        [bool]$isOffline = $false,
+        [string]$gameRootPath
     )
 
     Write-ColorMessage "`nAvailable Options:" -Color "DarkCyan"
+    
+    if ($isOffline) {
+        Write-ColorMessage "OFFLINE MODE - Only showing cached options" -Color "Yellow"
+    }
 
     # Display cache clearing option first
     Write-Host "[0] " -NoNewline -ForegroundColor White
@@ -536,24 +628,36 @@ function Show-ModeMenu {
     Write-ColorMessage $formattedDesc -Color "Cyan"
     Write-Host ""
 
+    # Filter modes if offline
+    $availableModes = if ($isOffline) {
+        $modes | Where-Object { Test-ModeOfflineAvailable -mode $_ -gameRootPath $gameRootPath }
+    } else {
+        $modes
+    }
+
+    if ($availableModes.Count -eq 0) {
+        Write-ColorMessage "No modes available offline. Please connect to the internet to download mod files." -Color "Red"
+        return -1
+    }
+
     # Display regular mode options
-    for ($i = 0; $i -lt $modes.Count; $i++) {
+    for ($i = 0; $i -lt $availableModes.Count; $i++) {
         # Create multiplayer status string with appropriate symbol
-        $mpStatus = if ($modes[$i].MultiplayerCompatible) {
+        $mpStatus = if ($availableModes[$i].MultiplayerCompatible) {
             "Multiplayer Compatible"
         } else {
             "Single Player Only"
         }
     
         # Check if this was the last used mode
-        $isLastUsed = $modes[$i].Name -eq $lastUsedMode
+        $isLastUsed = $availableModes[$i].Name -eq $lastUsedMode
     
         # Write the mode number, name, and multiplayer status
         Write-Host "[$($i + 1)] " -NoNewline -ForegroundColor White
-        Write-Host "$($modes[$i].Name)" -NoNewline -ForegroundColor White
+        Write-Host "$($availableModes[$i].Name)" -NoNewline -ForegroundColor White
 
         Write-Host " | " -NoNewline -ForegroundColor Gray
-        Write-Host $mpStatus -NoNewline -ForegroundColor $(if ($modes[$i].MultiplayerCompatible) {
+        Write-Host $mpStatus -NoNewline -ForegroundColor $(if ($availableModes[$i].MultiplayerCompatible) {
                 "Green" 
             } else {
                 "Yellow" 
@@ -566,23 +670,28 @@ function Show-ModeMenu {
         }
     
         # Format and display the description with proper wrapping
-        $formattedDesc = Format-Description -text $modes[$i].Description
+        $formattedDesc = Format-Description -text $availableModes[$i].Description
         Write-ColorMessage $formattedDesc -Color "Cyan"    
          
         # Add blank line between modes except after the last one
-        if ($i -lt $modes.Count - 1) {
+        if ($i -lt $availableModes.Count - 1) {
             Write-Host ""
         }
     }
 
     # Get user selection
     do {
-        $selection = Read-Host "`nSelect option (0-$($modes.Count))"
-    } while ([int]$selection -lt 0 -or [int]$selection -gt $modes.Count)
+        $selection = Read-Host "`nSelect option (0-$($availableModes.Count))"
+    } while ($selection -notmatch '^\d+$' -or [int]$selection -lt 0 -or [int]$selection -gt $availableModes.Count)
 
-    return $selection
+    if ($selection -eq "0") {
+        return 0
+    } else {
+        # Find the original index of the selected mode in the full modes array
+        $selectedMode = $availableModes[$selection - 1]
+        return ($modes.IndexOf($selectedMode) + 1)
+    }
 }
-
 
 # Main script
 try {
@@ -598,25 +707,25 @@ try {
         throw "Game root path does not exist: $gameRootPath"
     }
     
-    # Check online connectivity and get data
-    try {
-        Write-ColorMessage -Message "Getting online resources" -Color "Blue"
-        $onlineData = Invoke-WebRequest -Uri $onlineJsonUrl -UseBasicParsing | ConvertFrom-Json
-        
-        # Add schema version check
-        Test-SchemaVersion -onlineData $onlineData
-        
-        # Add self-update check if URL is provided
-        if ($onlineData.ScriptUpdateUrl) {
-            Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path -currentVersion $SCRIPT_VERSION
-        }
-        
-        Write-ColorMessage "Successfully retrieved online game mode data" -Color "Green"
-    } catch {
-        Write-ColorMessage "Cannot access online data, starting game in default mode" -Color "Yellow"
+    # Get online or cached data with online status
+    $jsonResult = Get-CachedJsonData -onlineJsonUrl $onlineJsonUrl -gameRootPath $gameRootPath
+    $onlineData = $jsonResult.Data
+    
+    if ($null -eq $onlineData) {
+        Write-ColorMessage "Starting game in default mode" -Color "Yellow"
         Start-Process $gameExecutablePath
         Start-Sleep -Seconds 5
         exit
+    }
+
+    # Add schema version check
+    Test-SchemaVersion -onlineData $onlineData
+
+    # Add self-update check only if we're online
+    if (-not $jsonResult.IsOnline) {
+        Write-ColorMessage "Offline mode - skipping update check" -Color "Yellow"
+    } elseif ($onlineData.ScriptUpdateUrl) {
+        Update-Script -updateUrl $onlineData.ScriptUpdateUrl -currentPath $MyInvocation.MyCommand.Path -currentVersion $SCRIPT_VERSION
     }
 
     # Update $steamINI with username
@@ -652,7 +761,13 @@ try {
         $lastUsedMode = Get-LastUsedMode -dlcVersionFile $dlcVersionFile -myDocsVersionFile $myDocsVersionFile
 
         # Show menu and get selection
-        $selection = Show-ModeMenu -modes $onlineData.PlayModes -lastUsedMode $lastUsedMode
+        $selection = Show-ModeMenu -modes $onlineData.PlayModes -lastUsedMode $lastUsedMode -isOffline (-not $jsonResult.IsOnline) -gameRootPath $gameRootPath
+
+        if ($selection -eq -1) {
+            Write-ColorMessage "No modes available. Press any key to exit..."
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            exit
+        }
 
         # Handle cache clearing option
         if ($selection -eq "0") {
