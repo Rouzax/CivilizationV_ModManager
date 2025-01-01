@@ -11,7 +11,7 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.5"
+$SCRIPT_VERSION = "1.0.6"
 
 # Add schema version check function
 function Test-SchemaVersion {
@@ -815,7 +815,8 @@ try {
             
             # Clean up old files if enabled, but only for locations that need updating
             if ($onlineData.Settings.CleanupOnModeSwitch) {
-                $oldFiles = $modes | Where-Object { $_.Name -ne $selectedMode.Name } |
+                $oldFiles = $onlineData.PlayModes | 
+                    Where-Object { $_.Name -ne $selectedMode.Name } |
                     ForEach-Object { $_.Files + $_.Folders }
                 if ($needsDLCUpdate) {
                     Clean-GameFiles -FilesToClean $oldFiles -cleanupEnabled $true -location "DLC"
