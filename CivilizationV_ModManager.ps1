@@ -11,13 +11,13 @@ param(
 )
 
 # Add version number after param block
-$SCRIPT_VERSION = "1.0.6"
+$SCRIPT_VERSION = "1.0.7"
 
 # Add schema version check function
 function Test-SchemaVersion {
     param([PSObject]$onlineData)
     
-    $requiredVersion = "1.0"
+    $requiredVersion = "1.1"
     if ($onlineData.schemaVersion -ne $requiredVersion) {
         throw "Incompatible online JSON schema version. Required: $requiredVersion, Found: $($onlineData.schemaVersion)"
     }
@@ -343,19 +343,15 @@ function Clear-CacheDirectories {
     param(
         [string]$myDocumentsPath
     )
-    $cacheDirs = @(
-        (Join-Path $myDocumentsPath "cache"),
-        (Join-Path $myDocumentsPath "ModUserData")
-    )
+    # Now only clearing the cache directory
+    $cacheDir = Join-Path $myDocumentsPath "cache"
 
-    foreach ($dir in $cacheDirs) {
-        if (Test-Path $dir) {
-            try {
-                Remove-Item -Path $dir\* -Recurse -Force
-                Write-ColorMessage "Cleared cache directory: $dir" -Color "Yellow"
-            } catch {
-                Write-ColorMessage "Error clearing cache directory $dir : $_" -Color "Red"
-            }
+    if (Test-Path $cacheDir) {
+        try {
+            Remove-Item -Path $cacheDir\* -Recurse -Force
+            Write-ColorMessage "Cleared cache directory: $cacheDir" -Color "Yellow"
+        } catch {
+            Write-ColorMessage "Error clearing cache directory $cacheDir : $_" -Color "Red"
         }
     }
     Write-ColorMessage "Cleared cache directory" -Color "Green"
@@ -478,90 +474,132 @@ function Get-LastUsedMode {
 }
 
 # Function to manage save games for different modes
-function Manage-SaveGames {
+function Manage-UserData {
     param(
         [string]$currentMode,
         [string]$previousMode,
         [string]$savePath,
+        [string]$modUserDataPath,
         [string]$backupBasePath
     )
     
-    # Create the backup root directory if it doesn't exist
+    # Create the backup root directories if they don't exist
     $backupRootPath = Join-Path $backupBasePath "ModeSaves"
+    $modUserDataBackupRoot = Join-Path $backupBasePath "ModeUserData"
     Ensure-Directory $backupRootPath
+    Ensure-Directory $modUserDataBackupRoot
 
-    # Ensure save directory exists
+    # Ensure directories exist
     Ensure-Directory $savePath
+    Ensure-Directory $modUserDataPath
 
-    Write-ColorMessage "`nManaging save games..." -Color "Blue"
+    Write-ColorMessage "`nManaging user data..." -Color "Blue"
 
-    # If there was a previous mode, backup its saves
+    # If there was a previous mode, backup its data
     if ($previousMode) {
         $previousModeBackupPath = Join-Path $backupRootPath ($previousMode -replace '[\\/:*?"<>|]', '_')
+        $previousModeUserDataBackupPath = Join-Path $modUserDataBackupRoot ($previousMode -replace '[\\/:*?"<>|]', '_')
         
-        # Check if there are any files to backup (recursively)
+        # Handle save games
         $hasFiles = Get-ChildItem -Path $savePath -File -Recurse
-        
         if ($hasFiles) {
             Write-ColorMessage "Backing up $previousMode save games..." -Color "Cyan"
-            
-            # Create mode backup directory
             Ensure-Directory $previousModeBackupPath
             
             try {
-                # Get all files with their relative paths
                 $files = Get-ChildItem -Path $savePath -File -Recurse
-                
                 foreach ($file in $files) {
-                    # Calculate relative path from save directory
                     $relativePath = $file.FullName.Substring($savePath.Length + 1)
                     $targetFile = Join-Path $previousModeBackupPath $relativePath
                     $targetDir = Split-Path $targetFile -Parent
                     
-                    # Ensure target directory exists
                     if (-not (Test-Path $targetDir)) {
                         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
                     }
                     
-                    # Copy file to backup location
                     Copy-Item -Path $file.FullName -Destination $targetFile -Force
-                    # Remove original file
                     Remove-Item -Path $file.FullName -Force
                 }
-                
                 Write-ColorMessage "Successfully backed up save games for $previousMode" -Color "Green"
             } catch {
                 Write-ColorMessage "Error backing up saves: $_" -Color "Red"
             }
         }
+
+        # Handle ModUserData
+        $hasModUserData = Get-ChildItem -Path $modUserDataPath -File -Recurse
+        if ($hasModUserData) {
+            Write-ColorMessage "Backing up $previousMode mod user data..." -Color "Cyan"
+            Ensure-Directory $previousModeUserDataBackupPath
+            
+            try {
+                $files = Get-ChildItem -Path $modUserDataPath -File -Recurse
+                foreach ($file in $files) {
+                    $relativePath = $file.FullName.Substring($modUserDataPath.Length + 1)
+                    $targetFile = Join-Path $previousModeUserDataBackupPath $relativePath
+                    $targetDir = Split-Path $targetFile -Parent
+                    
+                    if (-not (Test-Path $targetDir)) {
+                        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                    }
+                    
+                    Copy-Item -Path $file.FullName -Destination $targetFile -Force
+                    Remove-Item -Path $file.FullName -Force
+                }
+                Write-ColorMessage "Successfully backed up mod user data for $previousMode" -Color "Green"
+            } catch {
+                Write-ColorMessage "Error backing up mod user data: $_" -Color "Red"
+            }
+        }
     }
 
-    # Restore saves for the selected mode if they exist
+    # Restore data for the selected mode if they exist
     $selectedModeBackupPath = Join-Path $backupRootPath ($currentMode -replace '[\\/:*?"<>|]', '_')
+    $selectedModeUserDataBackupPath = Join-Path $modUserDataBackupRoot ($currentMode -replace '[\\/:*?"<>|]', '_')
+
+    # Restore saves
     if (Test-Path $selectedModeBackupPath) {
         Write-ColorMessage "Restoring $currentMode save games..." -Color "Cyan"
         
         try {
-            # Get all files with their relative paths from backup
             $files = Get-ChildItem -Path $selectedModeBackupPath -File -Recurse
-            
             foreach ($file in $files) {
-                # Calculate relative path from backup directory
                 $relativePath = $file.FullName.Substring($selectedModeBackupPath.Length + 1)
                 $targetFile = Join-Path $savePath $relativePath
                 $targetDir = Split-Path $targetFile -Parent
                 
-                # Ensure target directory exists
                 if (-not (Test-Path $targetDir)) {
                     New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
                 }
                 
-                # Copy file to saves location
                 Copy-Item -Path $file.FullName -Destination $targetFile -Force
             }
             Write-ColorMessage "Successfully restored save games for $currentMode" -Color "Green"
         } catch {
             Write-ColorMessage "Error restoring saves: $_" -Color "Red"
+        }
+    }
+
+    # Restore ModUserData
+    if (Test-Path $selectedModeUserDataBackupPath) {
+        Write-ColorMessage "Restoring $currentMode mod user data..." -Color "Cyan"
+        
+        try {
+            $files = Get-ChildItem -Path $selectedModeUserDataBackupPath -File -Recurse
+            foreach ($file in $files) {
+                $relativePath = $file.FullName.Substring($selectedModeUserDataBackupPath.Length + 1)
+                $targetFile = Join-Path $modUserDataPath $relativePath
+                $targetDir = Split-Path $targetFile -Parent
+                
+                if (-not (Test-Path $targetDir)) {
+                    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                }
+                
+                Copy-Item -Path $file.FullName -Destination $targetFile -Force
+            }
+            Write-ColorMessage "Successfully restored mod user data for $currentMode" -Color "Green"
+        } catch {
+            Write-ColorMessage "Error restoring mod user data: $_" -Color "Red"
         }
     }
 }
@@ -789,18 +827,19 @@ try {
         }
 
 
-        # Backup saves if enabled
+        # Backup saves and mod user data if enabled
         if ($lastUsedMode -ne $selectedMode.Name) {
             if ($onlineData.Settings.BackupSaves) {
                 $savePath = Join-Path $myDocumentsGamePath "Saves"
-                Manage-SaveGames `
+                $modUserDataPath = Join-Path $myDocumentsGamePath "ModUserData"
+                Manage-UserData `
                     -currentMode $selectedMode.Name `
                     -previousMode $lastUsedMode `
                     -savePath $savePath `
+                    -modUserDataPath $modUserDataPath `
                     -backupBasePath $myDocumentsGamePath
             }
-
-        } 
+        }
 
         $needsDLCUpdate = $dlcVersion -eq $null -or 
         $dlcVersion.Mode -ne $selectedMode.Name -or 
