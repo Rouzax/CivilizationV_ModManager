@@ -829,7 +829,7 @@ try {
 
         # Backup saves and mod user data if enabled
         if ($lastUsedMode -ne $selectedMode.Name) {
-            if ($onlineData.Settings.BackupSaves) {
+            if ($onlineData.Settings.BackupUserData) {
                 $savePath = Join-Path $myDocumentsGamePath "Saves"
                 $modUserDataPath = Join-Path $myDocumentsGamePath "ModUserData"
                 Manage-UserData `
