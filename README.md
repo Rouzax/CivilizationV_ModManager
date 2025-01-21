@@ -3,13 +3,40 @@
 This script, `CivilizationV_ModManager.ps1`, is designed to help manage and streamline mod configurations for Sid Meier's Civilization V. It handles tasks like backing up save files, cleaning up outdated files, downloading necessary resources, and ensuring compatibility for selected game modes.
 
 ## Features
-- **Mode Selection**: Choose from various predefined game modes with detailed descriptions.
-- **Backup Save Files**: Automatically backs up save files before making changes.
-- **File and Folder Cleanup**: Cleans up outdated files and folders based on selected modes.
-- **Version Management**: Ensures the local files match the online version for the selected mode.
-- **Cache Management**: Clears cache directories when necessary.
-- **Download and Extract Updates**: Downloads and extracts necessary files for the selected game mode.
-- **Automatic INI Updates**: Updates your `steam.ini` file with the current username.
+
+- **Multiple Play Modes**: Easily switch between different game configurations:
+  - Standard (Vanilla) Game
+  - Enhanced UI (EUI)
+  - Vox Populi (Community Balance Patch)
+  - Vox Populi Multiplayer
+  - Or any that you put online
+
+- **Smart Cache Management**:
+  - Downloads are cached to prevent unnecessary re-downloads
+  - Automatic cleanup of outdated cache entries
+  - Option to clear game cache manually when needed
+
+- **User Data Management**:
+  - Automatic backup of save games when switching modes
+  - Separate save games for each play mode
+  - Preserves mod-specific user data between sessions
+
+- **Offline Support**:
+  - Works offline with previously cached content
+  - Displays only available options when offline
+
+- **Additional Features**:
+  - Automatic username configuration for multiplayer
+  - Self-updating capability
+  - Clear visual feedback with color-coded console output
+  - Compatible with both single-player and multiplayer setups
+
+## Requirements
+
+- Windows operating system
+- PowerShell 5.1 or newer
+- Civilization V with all DLCs installed
+- Internet connection (for initial setup and updates)
 
 ## Installation
 1. Download the script: `CivilizationV_ModManager.ps1`.
@@ -43,6 +70,7 @@ The script relies on a JSON file to define the available game modes, their descr
 ```json
 {
     "schemaVersion": "1.0",
+    "ScriptUpdateUrl": "https://raw.githubusercontent.com/Rouzax/CivilizationV_ModManager/main/CivilizationV_ModManager.ps1",
     "lastUpdated": "2024-12-20",
     "PlayModes": [
         {
@@ -70,10 +98,34 @@ The script relies on a JSON file to define the available game modes, their descr
             "Folders": [],
             "DLCDownload": "https://example.com/civ5/eui_dlc.zip",
             "DocsDownload": "https://example.com/civ5/eui_docs.zip"
+        },
+                {
+            "Name": "Vox Populi",
+            "Description": "Complete game overhaul with enhanced AI, rebalanced civilizations, and new gameplay systems. Includes improved UI and In-Game Editor. For experienced players seeking challenges.",
+            "MultiplayerCompatible": false,
+            "OnlineVersion": {
+                "DLC": "4.17.8",
+                "MyDocuments": "4.17.8"
+            },
+            "Files": [
+                "MyDocuments/Text/VPUI_tips_en_us.xml",
+                "MyDocuments/MODS/InGame Editor+ (v 46).civ5mod"
+            ],
+            "Folders": [
+                "DLC/UI_bc1",
+                "DLC/VPUI",
+                "MyDocuments/MODS/(1) Community Patch",
+                "MyDocuments/MODS/(2) Vox Populi",
+                "MyDocuments/MODS/(3a) VP - EUI Compatibility Files",
+                "MyDocuments/MODS/(4a) Squads for VP",
+                "MyDocuments/MODS/InGame Editor+ (v 46)"
+            ],
+            "DLCDownload": "https://example.com/civ5/civ5_VoxPopuli_4.17.8 _dlc.zip",
+            "DocsDownload": "https://example.com/civ5/civ5_VoxPopuli_4.17.8 _dlc.zip"
         }
     ],
     "Settings": {
-        "BackupSaves": true,
+        "BackupUserData": true,
         "CleanupOnModeSwitch": true
     }
 }
@@ -81,6 +133,7 @@ The script relies on a JSON file to define the available game modes, their descr
 
 ### Fields
 - **schemaVersion**: Indicates the version of the JSON schema.
+- **ScriptUpdateUrl**: URL to download latest version of the script
 - **lastUpdated**: The last update date for this JSON file.
 - **PlayModes**: An array of objects defining available game modes.
   - **Name**: The name of the game mode.
@@ -94,7 +147,7 @@ The script relies on a JSON file to define the available game modes, their descr
   - **DLCDownload**: (Optional) The URL to download DLC files.
   - **DocsDownload**: (Optional) The URL to download files for the MyDocuments folder.
 - **Settings**: Global settings for the script.
-  - **BackupSaves**: If true, save files will be backed up.
+  - **BackupUserData**: If true, save files and user mod data will be backed up.
   - **CleanupOnModeSwitch**: If true, old files and folders will be cleaned up when switching modes.
 
 ## Notes
